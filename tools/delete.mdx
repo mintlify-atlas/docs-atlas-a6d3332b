@@ -1,0 +1,263 @@
+---
+title: Delete mode
+description: Remove annotations and content from your breakpoints
+---
+
+# Delete Mode
+
+The Delete tool allows you to remove individual annotations from your breakpoints, including drawing strokes, text notes, and voice notes. This gives you precise control over your analysis content without deleting entire breakpoints.
+
+## How to Use Delete Mode
+
+<Steps>
+  <Step title="Activate Delete Mode">
+    In Analysis Mode, click the **Delete** tool in the Analysis Menu. The tool icon appears alongside Draw, Text, and Voice tools.
+    
+    When active, Delete mode is highlighted and your cursor changes to indicate deletion mode.
+  </Step>
+
+  <Step title="Delete Annotations">
+    Click on any annotation you want to remove:
+    
+    - **Drawing strokes**: Click directly on a stroke to delete it
+    - **Text notes**: Click on the text note icon or content
+    - **Voice notes**: Click on the voice note icon
+    
+    The annotation is immediately removed from the breakpoint.
+  </Step>
+
+  <Step title="Delete Multiple Items">
+    Delete mode remains active until you switch to another tool. You can:
+    
+    - Click multiple times to delete several annotations
+    - Click and drag over drawing strokes to delete them continuously
+    - Switch between different annotation types
+  </Step>
+
+  <Step title="Deactivate Delete Mode">
+    Click the **Delete** tool again or select another tool (Draw, Text, Voice) to exit delete mode.
+  </Step>
+</Steps>
+
+## What You Can Delete
+
+<CardGroup cols={3}>
+  <Card title="Drawing Strokes" icon="pen">
+    Individual vector strokes created with the drawing tool
+  </Card>
+  <Card title="Text Notes" icon="note">
+    Text annotations positioned on the video frame
+  </Card>
+  <Card title="Voice Notes" icon="microphone">
+    Audio recordings attached to the breakpoint
+  </Card>
+</CardGroup>
+
+<Info>
+Delete mode removes individual annotations. To delete an entire breakpoint with all its content, use the **Delete Breakpoint** button at the bottom of the Analysis Menu.
+</Info>
+
+## Delete Mode vs Delete Breakpoint
+
+It's important to understand the difference between these two deletion methods:
+
+| Feature | Delete Mode | Delete Breakpoint Button |
+|---------|-------------|-------------------------|
+| **Target** | Individual annotations | Entire breakpoint |
+| **Granularity** | Precise control | All-or-nothing |
+| **Permanence** | Immediate, cannot undo | Immediate, cannot undo |
+| **Use case** | Fix mistakes, refine analysis | Remove entire analysis point |
+| **Location** | Tool list in Analysis Menu | Bottom of Analysis Menu |
+
+## Drawing Stroke Deletion
+
+Delete mode uses a sophisticated collision detection system to make it easy to select and remove drawing strokes:
+
+### How Collision Detection Works
+
+When you click in delete mode, the system:
+
+1. **Checks from top to bottom**: The most recently drawn strokes are checked first
+2. **Uses precise hit testing**: Path2D API provides pixel-perfect detection
+3. **Applies tolerance**: 2x line width tolerance makes selection easier
+4. **Returns first match**: Deletes the topmost stroke at the click position
+
+This is implemented in `handleDraw.ts:checkCollision()`:
+
+```typescript
+export function checkCollision(
+  mouseX: number,
+  mouseY: number,
+  vectors: Vector[],
+  ctx: CanvasRenderingContext2D
+): number | null {
+  // Iterate in reverse (topmost strokes first)
+  for (let i = vectors.length - 1; i >= 0; i--) {
+    const vector = vectors[i];
+    const path = new Path2D();
+    
+    // Reconstruct the path
+    path.moveTo(vector.points[0].x, vector.points[0].y);
+    for (let j = 1; j < vector.points.length; j++) {
+      path.lineTo(vector.points[j].x, vector.points[j].y);
+    }
+    
+    // Check if click is within stroke bounds (with tolerance)
+    ctx.lineWidth = vector.lineWidth * 2; // 2x tolerance
+    if (ctx.isPointInStroke(path, mouseX, mouseY)) {
+      return i; // Return index of hit stroke
+    }
+  }
+  
+  return null; // No collision
+}
+```
+
+### Drawing Deletion Tips
+
+<Accordion title="Can't select thin strokes">
+  The 2x line width tolerance helps, but very thin strokes can be hard to click precisely. Try:
+  - Zooming in if your browser supports it
+  - Clicking slightly to the side of the stroke
+  - Using click-and-drag to sweep across the stroke
+</Accordion>
+
+<Accordion title="Wrong stroke deleted">
+  The system deletes the topmost stroke at the click position. If strokes overlap:
+  - Delete from top to bottom (most recent to oldest)
+  - Be precise with your click position
+  - Use the Video Timeline to review your deletions
+</Accordion>
+
+<Accordion title="Continuous deletion">
+  When you click and hold while dragging, delete mode continuously checks for collisions. This is useful for:
+  - Erasing long continuous strokes
+  - Removing multiple overlapping strokes
+  - Clearing specific areas
+</Accordion>
+
+## Text and Voice Note Deletion
+
+Deleting text and voice notes is simpler than drawing strokes:
+
+### Text Notes
+
+Click anywhere on the text note component (icon or text content) to delete it. The note is immediately removed from the canvas.
+
+### Voice Notes
+
+Click on the voice note icon to delete it. The associated audio file is removed from the breakpoint.
+
+<Warning>
+Deleted voice recordings cannot be recovered. The audio data is permanently removed when you delete a voice note.
+</Warning>
+
+## Deletion is Permanent
+
+<Warning>
+Delete mode changes are **immediate and irreversible**. There is no undo functionality.
+
+To protect your work:
+- Export your analysis file before making major deletions
+- Create backup .an files at different stages
+- Consider creating a new breakpoint instead of modifying an existing one
+</Warning>
+
+## Cursor and Visual Feedback
+
+When Delete mode is active:
+
+- **Delete tool is highlighted** in the Analysis Menu
+- **Cursor changes** to indicate deletion mode (browser-dependent)
+- **Click feedback**: Deleted items disappear immediately
+- **No confirmation dialog**: Deletions happen instantly
+
+## Workflow Example
+
+Here's a typical workflow for refining your analysis:
+
+<Steps>
+  <Step title="Review Your Breakpoint">
+    Navigate to a breakpoint in Replay Mode or Analysis Mode to see all annotations.
+  </Step>
+
+  <Step title="Identify Issues">
+    Spot drawing strokes that are inaccurate, text notes that are outdated, or voice recordings you want to replace.
+  </Step>
+
+  <Step title="Activate Delete Mode">
+    Switch to Analysis Mode if not already active, then click the Delete tool.
+  </Step>
+
+  <Step title="Remove Unwanted Content">
+    Click on specific annotations to remove them. The canvas updates in real-time.
+  </Step>
+
+  <Step title="Add Replacements">
+    Switch to Draw, Text, or Voice tools to add corrected content.
+  </Step>
+
+  <Step title="Export Updated Analysis">
+    Save your refined analysis using the Export Analysis File button.
+  </Step>
+</Steps>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Delete mode not working">
+    Ensure that:
+    - You're in Analysis Mode (not Replay Mode)
+    - A breakpoint is selected and active
+    - The Delete tool is highlighted in the Analysis Menu
+    - You're clicking directly on annotations (not empty space)
+  </Accordion>
+
+  <Accordion title="Can't delete drawing stroke">
+    Drawing deletion requires clicking within the stroke bounds:
+    - Try clicking directly on the line (not near it)
+    - Use click-and-drag to sweep across the stroke
+    - Remember the 2x line width tolerance helps but isn't infinite
+  </Accordion>
+
+  <Accordion title="Accidental deletion">
+    Since there's no undo:
+    - If you haven't exported yet, reload the .an file to restore
+    - If working from a fresh video, recreate the annotation
+    - Consider keeping backup .an files for important analyses
+  </Accordion>
+</AccordionGroup>
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Export before major changes" icon="floppy-disk">
+    Create a backup .an file before making significant deletions to your analysis
+  </Card>
+  <Card title="Delete incrementally" icon="list-check">
+    Remove one annotation at a time to avoid accidental deletions
+  </Card>
+  <Card title="Review in Replay Mode" icon="eye">
+    Check your changes in Replay Mode to ensure you deleted the right content
+  </Card>
+  <Card title="Use Delete Breakpoint for fresh starts" icon="trash">
+    If you need to redo an entire analysis point, delete the whole breakpoint instead
+  </Card>
+</CardGroup>
+
+## Related Tools
+
+<CardGroup cols={2}>
+  <Card title="Drawing Tool" icon="pen" href="/tools/drawing">
+    Create drawing annotations
+  </Card>
+  <Card title="Text Notes" icon="note" href="/tools/text-notes">
+    Add text annotations
+  </Card>
+  <Card title="Voice Notes" icon="microphone" href="/tools/voice-notes">
+    Record audio commentary
+  </Card>
+  <Card title="Breakpoints" icon="bookmark" href="/features/breakpoints">
+    Learn about breakpoint management
+  </Card>
+</CardGroup>

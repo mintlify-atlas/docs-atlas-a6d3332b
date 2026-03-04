@@ -327,19 +327,22 @@ if (output.code !== 0) {
 
 Non-zero exit codes trigger error messages with FFmpeg's stderr output for debugging.
 
-## Keyboard Shortcuts
+## Trim Workflow Tips
 
-| Action | Shortcut |
-|--------|----------|
-| Toggle Trim Mode | `M` |
-| Jump to Trim Start | `[` |
-| Jump to Trim End | `]` |
-| Set Trim Start to Current Time | `I` |
-| Set Trim End to Current Time | `O` |
-
-<Note>
-Keyboard shortcuts require the video player to have focus.
-</Note>
+<CardGroup cols={2}>
+  <Card title="Precise Trimming" icon="crosshairs">
+    Use the timeline to navigate to exact frames before setting trim points
+  </Card>
+  <Card title="Preview Before Export" icon="eye">
+    Review your trim boundaries in Replay Mode before exporting
+  </Card>
+  <Card title="Keyboard Shortcuts" icon="keyboard" href="/guides/keyboard-shortcuts">
+    Learn about available shortcuts (note: Creative! currently uses click-based interface)
+  </Card>
+  <Card title="FFmpeg Settings" icon="gear">
+    The preset and quality settings below can help you understand export performance
+  </Card>
+</CardGroup>
 
 ## Advanced: FFmpeg Command Breakdown
 

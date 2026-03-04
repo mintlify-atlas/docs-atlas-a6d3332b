@@ -46,7 +46,8 @@
               "tools/drawing",
               "tools/text-notes",
               "tools/voice-notes",
-              "tools/video-trimming"
+              "tools/video-trimming",
+              "tools/delete"
             ]
           },
           {
