@@ -1,0 +1,315 @@
+---
+title: Exporting & Sharing Analysis
+description: Learn how to export your gameplay analysis and share it with others
+---
+
+Creative! allows you to export your complete analysis as a single `.an` file that contains your video, breakpoints, and all annotations. This makes it easy to save your work and share it with coaches, teammates, or friends.
+
+## Understanding Analysis Files
+
+### File Format
+Creative! exports analysis files with the `.an` extension. These files are compressed archives that contain:
+
+- **Video file**: Your gameplay video (trimmed if you applied trimming)
+- **Breakpoint data**: Timestamps for each breakpoint
+- **Drawings**: All drawing annotations with color and position data
+- **Text notes**: Written observations and commentary
+- **Voice notes**: Audio recordings saved as WAV files
+- **Metadata**: Video trim bounds and playback information
+
+<Info>
+The `.an` file format is specifically designed for Creative! and packages everything into a single, portable file.
+</Info>
+
+### How It Works
+
+When you export an analysis:
+
+1. **Video processing**: If you've trimmed the video, Creative! uses FFmpeg to create a trimmed copy with these settings:
+   - Video codec: H.264 (libx264)
+   - Preset: ultrafast
+   - CRF: 25 (balanced quality/size)
+   - Audio codec: AAC at 128k bitrate
+
+2. **Timestamp adjustment**: All breakpoint timestamps are adjusted to match the trimmed video (starting from 0)
+
+3. **Audio extraction**: Voice notes are extracted from memory and saved as WAV files
+
+4. **Archive creation**: Everything is packaged into a ZIP-based `.an` archive using Rust native bindings for optimal performance
+
+<Note>
+Creative! uses native Rust code to handle the archiving process, which means even large videos can be exported without memory limitations.
+</Note>
+
+## Exporting Your Analysis
+
+<Steps>
+  <Step title="Ensure you have breakpoints">
+    You must create at least one breakpoint before exporting. The export button is only available when breakpoints exist.
+  </Step>
+
+  <Step title="Switch to Analysis Mode">
+    Click "Analysis Mode" at the top of the screen if you're not already in it.
+  </Step>
+
+  <Step title="Click Export Analysis File">
+    At the bottom of the Analysis Menu on the right side, click the green "Export Analysis File" button.
+  </Step>
+
+  <Step title="Choose save location">
+    A file dialog will open. Navigate to where you want to save the file and enter a filename.
+    
+    <Info>
+    The default filename is `my_analysis.an`, but you can change this to anything descriptive.
+    </Info>
+  </Step>
+
+  <Step title="Wait for export to complete">
+    A loading overlay will appear with the message "Exporting file...". This process may take some time depending on:
+    - Video size and length
+    - Number of breakpoints
+    - Amount of voice notes
+    - Whether video trimming is required
+  </Step>
+
+  <Step title="Confirm completion">
+    When the loading overlay disappears, your analysis file has been successfully saved.
+  </Step>
+</Steps>
+
+## Loading Analysis Files
+
+You can load previously saved analysis files back into Creative! to review or continue working on them.
+
+<Steps>
+  <Step title="Open the file selector">
+    Click anywhere on the placeholder screen (or select a new file if you already have a video loaded).
+  </Step>
+
+  <Step title="Select your .an file">
+    Navigate to your saved analysis file and select it. Creative! recognizes both `.an` and `.anal` extensions.
+  </Step>
+
+  <Step title="Wait for extraction">
+    Creative! will:
+    - Extract the archive to a temporary directory
+    - Load the video file
+    - Reconstruct all breakpoints with their annotations
+    - Restore audio blobs for voice notes
+    - Apply any saved trim bounds
+  </Step>
+
+  <Step title="Review your analysis">
+    Once loaded, you can:
+    - Watch your analysis in Replay Mode
+    - Edit breakpoints in Analysis Mode
+    - Add new annotations
+    - Export again with changes
+  </Step>
+</Steps>
+
+<Note>
+Analysis files are extracted to your system's temporary directory each time you open them. The original `.an` file remains unchanged unless you export again.
+</Note>
+
+## Sharing Analysis Files
+
+### File Size Considerations
+
+Analysis files can be large because they contain the entire video. Consider these factors:
+
+- **Trimming reduces size**: Use the trim feature to include only relevant footage
+- **Original video quality**: Higher quality source videos create larger exports
+- **Voice notes**: Multiple voice recordings add to file size, but typically remain small (kilobytes)
+
+### Sharing Methods
+
+Depending on file size, you can share analysis files via:
+
+<AccordionGroup>
+  <Accordion title="Cloud storage">
+    Upload to services like:
+    - Google Drive
+    - Dropbox
+    - OneDrive
+    - iCloud Drive
+    
+    Then share the download link with others.
+  </Accordion>
+
+  <Accordion title="File transfer services">
+    For larger files, use dedicated transfer services:
+    - WeTransfer
+    - Send Anywhere
+    - Firefox Send alternatives
+  </Accordion>
+
+  <Accordion title="Direct transfer">
+    For local sharing:
+    - USB drive
+    - Local network transfer
+    - AirDrop (macOS)
+  </Accordion>
+
+  <Accordion title="Team platforms">
+    Upload to your team's platform:
+    - Discord (if under size limit)
+    - Slack
+    - Team file servers
+    - Gaming community platforms
+  </Accordion>
+</AccordionGroup>
+
+## Troubleshooting Export Issues
+
+<AccordionGroup>
+  <Accordion title="Export button is disabled">
+    **Problem**: The "Export Analysis File" button appears grayed out or doesn't respond.
+    
+    **Solutions**:
+    - Ensure you've created at least one breakpoint
+    - Verify you're in Analysis Mode
+    - Check that a video is currently loaded
+  </Accordion>
+
+  <Accordion title="Export process hangs or fails">
+    **Problem**: The "Exporting file..." message stays on screen indefinitely or an error occurs.
+    
+    **Solutions**:
+    - Check available disk space (you need enough space for the full video file)
+    - Try trimming the video to a shorter segment
+    - Close other applications to free up system resources
+    - Check the console for error messages (see [Troubleshooting](/guides/troubleshooting))
+  </Accordion>
+
+  <Accordion title="Voice notes missing after export">
+    **Problem**: Voice notes don't play when loading an exported analysis file.
+    
+    **Solutions**:
+    - Verify voice notes were successfully recorded before export (play them back)
+    - Check microphone permissions
+    - Ensure sufficient disk space during export
+    - Try recording new voice notes with shorter duration
+  </Accordion>
+
+  <Accordion title="Video quality degradation">
+    **Problem**: The exported video looks worse than the original.
+    
+    **Solutions**:
+    - This is expected when trimming (CRF 25 is used for fast encoding)
+    - If you didn't trim, the original video is included without re-encoding
+    - For higher quality trimmed exports, consider trimming the original video externally first
+  </Accordion>
+
+  <Accordion title="Cannot open .an file on another computer">
+    **Problem**: Analysis file won't open on a different machine.
+    
+    **Solutions**:
+    - Ensure Creative! is installed on the target computer
+    - Verify the file wasn't corrupted during transfer (check file size)
+    - Try re-exporting the analysis on the original computer
+    - Make sure both computers are running compatible versions of Creative!
+  </Accordion>
+</AccordionGroup>
+
+## Technical Details
+
+### Export Process (Technical)
+
+For developers or advanced users interested in the export mechanism:
+
+```typescript
+// Export workflow from exportAnalysis.ts
+1. Validate video path exists
+2. Create temporary directory in app data
+3. If video trimming is needed:
+   - Generate trimmed filename with timestamp
+   - Execute FFmpeg sidecar binary
+   - Adjust breakpoint timestamps relative to trim start
+4. Clone breakpoints to avoid mutating app state
+5. Extract voice note blobs to temporary WAV files
+6. Build export data JSON structure
+7. Invoke Rust 'pack_analysis_file' command with:
+   - Save path
+   - Video path (trimmed or original)
+   - JSON data
+   - Audio file paths mapping
+8. Rust creates ZIP archive directly from file paths
+```
+
+### File Structure
+
+Inside an `.an` file:
+
+```
+analysis.an (ZIP archive)
+├── video.mp4 (or .webm, .mov)
+├── data.json (breakpoint and metadata)
+└── audio/
+    ├── voice_<id1>.wav
+    ├── voice_<id2>.wav
+    └── ...
+```
+
+### Data JSON Schema
+
+```json
+{
+  "breakpoints": [
+    {
+      "timeStamp": 15.5,
+      "textContent": [
+        { "id": "...", "text": "..." }
+      ],
+      "voiceContent": [
+        { "id": "...", "filename": "voice_xyz.wav" }
+      ],
+      "drawingContent": {
+        "color": "red",
+        "paths": [...]
+      }
+    }
+  ],
+  "videoStart": 0,
+  "videoEnd": 120.5
+}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use descriptive filenames">
+    Name your analysis files clearly:
+    - Include game name: `valorant_defense_strategy.an`
+    - Add date: `2024_03_15_ranked_match.an`
+    - Describe content: `positioning_mistakes_game3.an`
+  </Accordion>
+
+  <Accordion title="Trim before exporting large files">
+    If your gameplay recording is lengthy:
+    - Trim to only relevant segments
+    - This reduces file size significantly
+    - Makes sharing easier
+    - Speeds up export time
+  </Accordion>
+
+  <Accordion title="Test the export">
+    After exporting:
+    - Try loading the file back into Creative!
+    - Verify all breakpoints and annotations are intact
+    - Check that voice notes play correctly
+  </Accordion>
+
+  <Accordion title="Keep original videos">
+    Always retain your original gameplay recordings:
+    - `.an` files use lossy compression when trimming
+    - You may want to create different analysis versions
+    - Allows you to start fresh if needed
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+- Learn [keyboard shortcuts](/guides/keyboard-shortcuts) for faster workflow
+- Check [troubleshooting](/guides/troubleshooting) if you encounter issues
+- Return to [creating analysis](/guides/creating-analysis) to refine your workflow

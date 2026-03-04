@@ -1,0 +1,355 @@
+---
+title: Building and Testing
+description: Learn how to build, run, and test Creative! during development
+---
+
+# Building and Testing
+
+This guide covers the development workflow for Creative!, including running the development server, building for production, and understanding the project structure.
+
+## Development Mode
+
+Development mode runs the app with hot-reload enabled, allowing you to see changes in real-time.
+
+### Starting the Dev Server
+
+<CodeGroup>
+  ```bash npm
+  npm run tauri dev
+  ```
+
+  ```bash yarn
+  yarn tauri dev
+  ```
+
+  ```bash pnpm
+  pnpm run tauri dev
+  ```
+</CodeGroup>
+
+This command:
+1. Starts the Vite development server on port 1420
+2. Compiles the Rust backend
+3. Launches the Tauri application window
+4. Enables hot-module replacement (HMR) for Vue components
+
+<Note>
+  The first build may take several minutes as Cargo compiles all Rust dependencies. Subsequent builds will be much faster thanks to caching.
+</Note>
+
+### Development Server Configuration
+
+The Vite dev server is configured in `vite.config.ts`:
+
+```typescript
+server: {
+  port: 1420,
+  strictPort: true,
+  host: host || false,
+  hmr: host
+    ? {
+        protocol: "ws",
+        host,
+        port: 1421,
+      }
+    : undefined,
+  watch: {
+    ignored: ["**/src-tauri/**"],
+  },
+}
+```
+
+<Warning>
+  The server uses a **strict port** (1420). If this port is already in use, the dev server will fail to start. Make sure to free up the port before running.
+</Warning>
+
+## Building for Production
+
+### Creating a Production Build
+
+Build the application for your current platform:
+
+<CodeGroup>
+  ```bash npm
+  npm run tauri build
+  ```
+
+  ```bash yarn
+  yarn tauri build
+  ```
+
+  ```bash pnpm
+  pnpm run tauri build
+  ```
+</CodeGroup>
+
+### Build Process
+
+The build process consists of two stages:
+
+<Steps>
+  <Step title="Frontend Build">
+    The frontend is built using Vite:
+
+    ```bash
+    vue-tsc --noEmit && vite build
+    ```
+
+    - **vue-tsc**: Type-checks TypeScript code without emitting files
+    - **vite build**: Bundles and optimizes the Vue application
+
+    Output is generated in the `dist/` directory.
+  </Step>
+
+  <Step title="Tauri Build">
+    Tauri compiles the Rust backend and packages the application:
+
+    - Compiles Rust code with optimizations
+    - Embeds the frontend bundle
+    - Creates platform-specific installers
+    - Bundles FFmpeg binaries for the target platform
+
+    Build artifacts are located in `src-tauri/target/release/`.
+  </Step>
+</Steps>
+
+### Build Output
+
+Depending on your platform, you'll get different output formats:
+
+<Tabs>
+  <Tab title="Windows">
+    - `.exe` - Standalone executable
+    - `.msi` - Windows Installer package
+
+    Located in: `src-tauri/target/release/bundle/msi/`
+  </Tab>
+
+  <Tab title="macOS">
+    - `.app` - macOS application bundle
+    - `.dmg` - Disk image installer
+
+    Located in: `src-tauri/target/release/bundle/dmg/`
+
+    <Warning>
+      The application is not signed by default. Users will need to remove the quarantine flag:
+      ```bash
+      sudo xattr -r -d com.apple.quarantine /path/to/Creative.app
+      ```
+    </Warning>
+  </Tab>
+
+  <Tab title="Linux">
+    - `.AppImage` - Portable Linux executable
+    - `.deb` - Debian/Ubuntu package
+
+    Located in: `src-tauri/target/release/bundle/appimage/` and `src-tauri/target/release/bundle/deb/`
+  </Tab>
+</Tabs>
+
+## Cross-Platform Builds
+
+### Building for Specific Targets
+
+You can build for specific platforms using Rust targets:
+
+```bash
+# Add the target first
+rustup target add aarch64-apple-darwin
+
+# Build for that target
+yarn tauri build --target aarch64-apple-darwin
+```
+
+### Supported Targets
+
+Based on the CI/CD configuration:
+
+| Platform | Target | Architecture |
+|----------|--------|-------------|
+| Windows | `x86_64-pc-windows-msvc` | 64-bit Intel/AMD |
+| Linux | `x86_64-unknown-linux-gnu` | 64-bit Intel/AMD |
+| macOS (Intel) | `x86_64-apple-darwin` | 64-bit Intel |
+| macOS (Apple Silicon) | `aarch64-apple-darwin` | ARM64 (M1/M2) |
+
+<Note>
+  Cross-compilation from one OS to another (e.g., building a Windows app on macOS) is generally not supported. Use CI/CD for multi-platform builds.
+</Note>
+
+## Testing
+
+### Type Checking
+
+Run TypeScript type checking:
+
+```bash
+vue-tsc --noEmit
+```
+
+This checks for type errors in your Vue components and TypeScript files without generating output.
+
+### Frontend Development Server
+
+You can run the frontend separately for faster iteration:
+
+```bash
+# Start Vite dev server only
+yarn dev
+```
+
+This runs the Vue app without Tauri, useful for UI development. Note that Tauri APIs won't be available.
+
+### Rust Testing
+
+Run Rust unit tests:
+
+```bash
+cd src-tauri
+cargo test
+```
+
+### Manual Testing Workflow
+
+When testing the full application:
+
+1. **Start dev mode**: `yarn tauri dev`
+2. **Test core features**:
+   - Load a video file
+   - Create breakpoints on the timeline
+   - Add drawings, text, and voice notes
+   - Export as `.an` file
+   - Load existing `.an` file
+3. **Check console**: Look for errors in both the dev console and terminal
+4. **Test platform features**: File dialogs, native menus, system integration
+
+## Project Structure
+
+```
+creative/
+├── src/                          # Vue frontend source
+│   ├── App.vue                   # Root component
+│   ├── main.ts                   # Application entry point
+│   ├── components/               # Vue components
+│   │   ├── canvas/              # Drawing canvas components
+│   │   ├── player/              # Video player components
+│   │   ├── sidebar/             # Sidebar UI components
+│   │   └── ...                  # Other component categories
+│   └── assets/                  # Static assets (images, styles)
+├── src-tauri/                   # Rust backend
+│   ├── src/                     # Rust source code
+│   │   ├── main.rs             # Tauri entry point
+│   │   └── lib.rs              # Library code
+│   ├── binaries/               # FFmpeg binaries (auto-downloaded)
+│   ├── tauri-plugin-audio-recorder/  # Custom audio plugin
+│   ├── Cargo.toml              # Rust dependencies
+│   ├── tauri.conf.json         # Tauri configuration
+│   └── capabilities/           # Tauri security capabilities
+├── dist/                        # Frontend build output (generated)
+├── node_modules/               # Node.js dependencies
+├── package.json                # Node.js project configuration
+├── vite.config.ts              # Vite bundler configuration
+├── tsconfig.json               # TypeScript configuration
+├── download_ffmpeg.cjs         # FFmpeg download script
+└── README.md                   # Project documentation
+```
+
+### Key Directories
+
+- **`src/`**: Vue 3 frontend code with TypeScript
+- **`src-tauri/src/`**: Rust backend code
+- **`src-tauri/binaries/`**: FFmpeg executables for video processing
+- **`src-tauri/tauri-plugin-audio-recorder/`**: Custom Tauri plugin for audio recording
+
+## Build Scripts
+
+Available npm scripts in `package.json`:
+
+| Script | Command | Description |
+|--------|---------|-------------|
+| `dev` | `vite` | Run Vite dev server only |
+| `build` | `vue-tsc --noEmit && vite build` | Build frontend with type checking |
+| `preview` | `vite preview` | Preview production build locally |
+| `tauri` | `tauri` | Run Tauri CLI commands |
+| `postinstall` | `node download_ffmpeg.cjs` | Auto-download FFmpeg after install |
+
+## CI/CD Pipeline
+
+The project uses GitHub Actions for automated builds:
+
+- **Trigger**: Push tags starting with `v` (e.g., `v1.0.0`)
+- **Platforms**: Windows, macOS (Intel + ARM), Linux
+- **Output**: Draft release with installers for all platforms
+
+See `.github/workflows/release.yml` for the full workflow configuration.
+
+## Performance Tips
+
+<Steps>
+  <Step title="Enable Rust Caching">
+    The first Rust build is slow. Subsequent builds use cached dependencies.
+
+    To clear the cache and rebuild:
+    ```bash
+    cd src-tauri
+    cargo clean
+    ```
+  </Step>
+
+  <Step title="Use Release Mode for Testing">
+    For performance testing, build in release mode:
+    ```bash
+    yarn tauri build
+    ```
+
+    Release builds are significantly faster than debug builds.
+  </Step>
+
+  <Step title="Optimize Vite Dev Server">
+    Vite already ignores `src-tauri/` to avoid unnecessary watching. If you experience slow HMR, check that you're not watching large directories.
+  </Step>
+</Steps>
+
+## Troubleshooting Builds
+
+### Build Fails with Linker Errors (Windows)
+
+**Solution**: Install Visual Studio C++ Build Tools (see [setup guide](/dev/setup)).
+
+### "Cannot find module" Errors
+
+**Solution**: Reinstall dependencies:
+```bash
+rm -rf node_modules
+yarn install
+```
+
+### Rust Build Fails
+
+**Solution**: Update Rust and clear cache:
+```bash
+rustup update stable
+cd src-tauri
+cargo clean
+cargo build
+```
+
+### Type Errors During Build
+
+**Solution**: Fix TypeScript errors reported by `vue-tsc`. The build will not proceed if type checking fails.
+
+### FFmpeg Binary Not Found
+
+**Solution**: Manually download FFmpeg:
+```bash
+node download_ffmpeg.cjs
+```
+
+Verify binaries exist:
+```bash
+ls src-tauri/binaries
+```
+
+## Next Steps
+
+- Learn how to [contribute to the project](/dev/contributing)
+- Review the [setup guide](/dev/setup) if you encounter environment issues

@@ -1,0 +1,459 @@
+---
+title: Contributing Guidelines
+description: Learn how to contribute to Creative! and help improve the gameplay analysis experience
+---
+
+# Contributing Guidelines
+
+Thank you for your interest in contributing to Creative! This guide will help you get started with contributing to the project.
+
+## Welcome Contributors!
+
+Creative! is an open-source gameplay analysis tool that helps gamers review their gameplay, analyze their performance, and share insights with friends and coaches. We welcome contributions of all kinds!
+
+## Ways to Contribute
+
+<CardGroup cols={2}>
+  <Card title="Report Bugs" icon="bug">
+    Found a bug? Help us improve by reporting it with detailed information.
+  </Card>
+  <Card title="Suggest Features" icon="lightbulb">
+    Have an idea for a new feature? We'd love to hear your suggestions!
+  </Card>
+  <Card title="Write Code" icon="code">
+    Submit pull requests to fix bugs, add features, or improve performance.
+  </Card>
+  <Card title="Improve Docs" icon="book">
+    Help make our documentation clearer and more comprehensive.
+  </Card>
+</CardGroup>
+
+## Getting Started
+
+<Steps>
+  <Step title="Set Up Your Environment">
+    Before contributing, make sure you have your development environment set up:
+
+    1. Follow the [development setup guide](/dev/setup)
+    2. Fork the repository on GitHub
+    3. Clone your fork locally:
+       ```bash
+       git clone https://github.com/YOUR_USERNAME/creative.git
+       cd creative
+       ```
+    4. Add the upstream repository:
+       ```bash
+       git remote add upstream https://github.com/ORIGINAL_OWNER/creative.git
+       ```
+  </Step>
+
+  <Step title="Create a Branch">
+    Create a new branch for your contribution:
+
+    ```bash
+    git checkout -b feature/your-feature-name
+    ```
+
+    Branch naming conventions:
+    - `feature/` - New features (e.g., `feature/add-zoom-controls`)
+    - `fix/` - Bug fixes (e.g., `fix/video-loading-error`)
+    - `docs/` - Documentation updates (e.g., `docs/update-readme`)
+    - `refactor/` - Code refactoring (e.g., `refactor/player-component`)
+  </Step>
+
+  <Step title="Make Your Changes">
+    1. Make your changes following the [code style guidelines](#code-style)
+    2. Test your changes thoroughly
+    3. Ensure the app builds successfully:
+       ```bash
+       yarn tauri build
+       ```
+    4. Run type checking:
+       ```bash
+       vue-tsc --noEmit
+       ```
+  </Step>
+
+  <Step title="Commit Your Changes">
+    Write clear, descriptive commit messages:
+
+    ```bash
+    git add .
+    git commit -m "feat: add zoom controls to video player"
+    ```
+
+    See [commit message guidelines](#commit-messages) below.
+  </Step>
+
+  <Step title="Push and Create PR">
+    Push your changes and create a pull request:
+
+    ```bash
+    git push origin feature/your-feature-name
+    ```
+
+    Then open a pull request on GitHub with a clear description of your changes.
+  </Step>
+</Steps>
+
+## Code Style
+
+### TypeScript / Vue Guidelines
+
+- **Use TypeScript** for all new code
+- **Follow Vue 3 Composition API** patterns
+- **Component naming**: Use PascalCase for component files (e.g., `VideoPlayer.vue`)
+- **Variable naming**: Use camelCase for variables and functions
+- **Constants**: Use UPPER_SNAKE_CASE for constants
+- **Formatting**: The project uses standard TypeScript/Vue formatting
+
+#### Example Vue Component
+
+```vue
+<script setup lang="ts">
+import { ref, computed } from 'vue'
+
+interface Props {
+  videoUrl: string
+  autoplay?: boolean
+}
+
+const props = withDefaults(defineProps<Props>(), {
+  autoplay: false
+})
+
+const isPlaying = ref(false)
+const currentTime = computed(() => {
+  // computed logic
+})
+
+function playVideo() {
+  isPlaying.value = true
+}
+</script>
+
+<template>
+  <div class="video-player">
+    <!-- template code -->
+  </div>
+</template>
+
+<style scoped>
+.video-player {
+  /* styles */
+}
+</style>
+```
+
+### Rust Guidelines
+
+- **Follow Rust conventions**: Use `snake_case` for functions and variables
+- **Error handling**: Use `Result<T, E>` for fallible operations
+- **Documentation**: Add doc comments for public functions and types
+- **Formatting**: Run `cargo fmt` before committing
+
+#### Example Rust Code
+
+```rust
+use tauri::command;
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct VideoMetadata {
+    duration: f64,
+    width: u32,
+    height: u32,
+}
+
+/// Extracts metadata from a video file
+#[command]
+pub fn get_video_metadata(path: String) -> Result<VideoMetadata, String> {
+    // implementation
+    Ok(VideoMetadata {
+        duration: 120.0,
+        width: 1920,
+        height: 1080,
+    })
+}
+```
+
+### Code Organization
+
+- **Components**: Group related components in subdirectories
+  - Example: `src/components/player/`, `src/components/canvas/`
+- **Utilities**: Place shared utilities in a `utils/` or `helpers/` directory
+- **Types**: Define TypeScript interfaces/types in `.d.ts` files or component files
+- **Rust modules**: Organize Rust code into logical modules in `src-tauri/src/`
+
+## Commit Messages
+
+Follow the [Conventional Commits](https://www.conventionalcommits.org/) specification:
+
+### Format
+
+```
+<type>(<scope>): <subject>
+
+<body>
+
+<footer>
+```
+
+### Types
+
+- `feat`: New feature
+- `fix`: Bug fix
+- `docs`: Documentation changes
+- `style`: Code style changes (formatting, no logic change)
+- `refactor`: Code refactoring
+- `perf`: Performance improvements
+- `test`: Adding or updating tests
+- `chore`: Maintenance tasks, dependency updates
+
+### Examples
+
+```bash
+# Simple feature
+git commit -m "feat: add export to MP4 functionality"
+
+# Bug fix with scope
+git commit -m "fix(player): resolve video seek timing issue"
+
+# Breaking change
+git commit -m "feat!: change analysis file format to JSON
+
+BREAKING CHANGE: .an files now use JSON format instead of binary.
+Existing files need to be re-exported."
+```
+
+## Pull Request Process
+
+<Steps>
+  <Step title="Ensure Quality">
+    Before submitting a PR:
+
+    - [ ] Code builds successfully (`yarn tauri build`)
+    - [ ] Type checking passes (`vue-tsc --noEmit`)
+    - [ ] Rust code compiles (`cargo build`)
+    - [ ] You've tested the changes manually
+    - [ ] Code follows style guidelines
+    - [ ] Commit messages are clear and follow conventions
+  </Step>
+
+  <Step title="Write a Clear Description">
+    Your PR description should include:
+
+    - **What** changes you made
+    - **Why** you made them
+    - **How** to test the changes
+    - **Screenshots** (if UI changes)
+    - **Related issues** (if any)
+
+    Example PR template:
+
+    ```markdown
+    ## Description
+    Adds zoom controls to the video player for better analysis of gameplay details.
+
+    ## Changes
+    - Added zoom in/out buttons to player controls
+    - Implemented zoom state management
+    - Added keyboard shortcuts (Ctrl + / Ctrl -)
+
+    ## Testing
+    1. Load a video file
+    2. Click zoom in/out buttons
+    3. Verify zoom level changes
+    4. Test keyboard shortcuts
+
+    ## Screenshots
+    ![zoom-controls](screenshot.png)
+
+    Closes #123
+    ```
+  </Step>
+
+  <Step title="Respond to Feedback">
+    - Be open to feedback and suggestions
+    - Make requested changes promptly
+    - Push updates to the same branch
+    - Respond to review comments
+  </Step>
+
+  <Step title="Merge">
+    Once approved:
+
+    - Maintainers will merge your PR
+    - Your contribution will be included in the next release
+    - You'll be credited in the release notes!
+  </Step>
+</Steps>
+
+## Reporting Issues
+
+### Bug Reports
+
+When reporting a bug, include:
+
+- **Description**: Clear description of the bug
+- **Steps to reproduce**: Exact steps to trigger the bug
+- **Expected behavior**: What should happen
+- **Actual behavior**: What actually happens
+- **Environment**:
+  - OS and version (Windows 11, macOS 14, Ubuntu 22.04)
+  - App version
+  - Video format (if relevant)
+- **Screenshots/logs**: Any error messages or screenshots
+
+#### Bug Report Template
+
+```markdown
+## Bug Description
+Video player crashes when loading MP4 files larger than 2GB.
+
+## Steps to Reproduce
+1. Click "Load Video"
+2. Select MP4 file > 2GB
+3. App crashes immediately
+
+## Expected Behavior
+Video should load and play normally.
+
+## Actual Behavior
+App crashes with error: "Memory allocation failed"
+
+## Environment
+- OS: Windows 11
+- App Version: 0.2.4
+- Video: 4K MP4, 2.5GB, H.264
+
+## Screenshots
+[Error screenshot]
+```
+
+### Feature Requests
+
+When suggesting a feature:
+
+- **Use case**: Explain why this feature would be useful
+- **Proposed solution**: Describe how it could work
+- **Alternatives**: Any alternative approaches you've considered
+- **Examples**: Examples from other apps (if applicable)
+
+## Development Workflow
+
+### Keeping Your Fork Updated
+
+Regularly sync your fork with the upstream repository:
+
+```bash
+# Fetch upstream changes
+git fetch upstream
+
+# Merge into your local main branch
+git checkout main
+git merge upstream/main
+
+# Push to your fork
+git push origin main
+```
+
+### Testing Changes
+
+1. **Manual testing**: Test all affected functionality
+2. **Cross-platform**: If possible, test on multiple OSes
+3. **Edge cases**: Test with various file formats, sizes, edge cases
+4. **Performance**: Check that changes don't degrade performance
+
+### Build Verification
+
+Before submitting a PR:
+
+```bash
+# Type check
+vue-tsc --noEmit
+
+# Build frontend
+yarn build
+
+# Build full app
+yarn tauri build
+
+# Test in dev mode
+yarn tauri dev
+```
+
+## Project Architecture
+
+### Frontend (Vue)
+
+- **Framework**: Vue 3 with Composition API
+- **Language**: TypeScript
+- **Build tool**: Vite
+- **State management**: Vue reactivity (ref, reactive, computed)
+- **Styling**: Scoped CSS in Vue components
+
+### Backend (Tauri/Rust)
+
+- **Framework**: Tauri 2
+- **Language**: Rust (Edition 2021)
+- **Architecture**: Commands exposed to frontend via `#[tauri::command]`
+- **Plugins**: Custom audio recorder plugin
+- **External binaries**: FFmpeg for video processing
+
+### Communication
+
+Frontend and backend communicate via:
+- **Commands**: Invoke Rust functions from Vue
+- **Events**: Emit events from Rust to Vue
+- **File system**: Tauri FS plugin for file operations
+
+## Key Technologies
+
+| Layer | Technology | Purpose |
+|-------|------------|----------|
+| Frontend | Vue 3 | UI framework |
+| Frontend | TypeScript | Type safety |
+| Frontend | Vite | Build tool & dev server |
+| Backend | Tauri 2 | Native app framework |
+| Backend | Rust | System-level language |
+| Video | FFmpeg | Video processing |
+| Audio | Custom Plugin | Audio recording |
+
+## Community Guidelines
+
+- **Be respectful**: Treat all contributors with respect
+- **Be constructive**: Provide helpful, actionable feedback
+- **Be patient**: Maintainers are volunteers
+- **Be collaborative**: Work together to solve problems
+
+## Getting Help
+
+If you need help:
+
+1. **Check the docs**: Review the [setup](/dev/setup) and [building](/dev/building) guides
+2. **Search issues**: Someone may have encountered the same problem
+3. **Ask questions**: Open an issue with the `question` label
+4. **Join discussions**: Participate in GitHub Discussions (if available)
+
+## Recognition
+
+Contributors are recognized in:
+- Release notes
+- GitHub contributors page
+- Project acknowledgments
+
+Thank you for contributing to Creative! Your help makes this tool better for the entire gaming community.
+
+## License
+
+By contributing, you agree that your contributions will be licensed under the same license as the project.
+
+## Questions?
+
+If you have questions about contributing, feel free to:
+- Open an issue with the `question` label
+- Reach out to maintainers
+- Check existing documentation
+
+Happy contributing! 🎮

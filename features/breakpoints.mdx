@@ -1,0 +1,214 @@
+---
+title: 'Breakpoints'
+description: 'Mark key moments in your gameplay for detailed analysis'
+---
+
+Breakpoints are markers you place on the video timeline to identify important moments in your gameplay. Each breakpoint can contain multiple types of annotations: drawings, text notes, and voice recordings.
+
+## Creating Breakpoints
+
+You can create breakpoints in two ways:
+
+<Steps>
+  <Step title="Automatic Creation">
+    When you add any annotation (drawing, text, or voice) at a specific time, Creative! automatically creates a breakpoint at that timestamp if one doesn't already exist.
+  </Step>
+  
+  <Step title="Manual Creation">
+    Call `createBreakpoint()` with an optional timestamp parameter. If no timestamp is provided, the breakpoint is created at the current playback position.
+  </Step>
+</Steps>
+
+## Breakpoint Structure
+
+Each breakpoint contains:
+
+```typescript
+type Breakpoint = {
+  timeStamp: number;              // Frame number in the video
+  textContent?: TextContent[];     // Array of text annotations
+  voiceContent?: VoiceContent[];   // Array of voice recordings
+  drawingContent?: DrawingContent; // Single drawing layer
+}
+```
+
+### Text Annotations
+
+Text annotations support:
+
+- **Positioning**: Absolute position with X/Y coordinates (as percentages)
+- **Dimensions**: Width and height (as percentages of video container)
+- **Flipping**: Automatically flip direction when near screen edges (`invertedX`, `invertedY`)
+- **Collapsing**: Toggle between expanded and collapsed states
+- **Content**: Free-form text content
+
+### Voice Annotations
+
+Voice annotations include:
+
+- **Audio Data**: Stored as Blob objects during editing, saved as WAV files in exports
+- **Duration**: Total recording length in seconds
+- **Positioning**: X/Y coordinates and dimensions (as percentages)
+- **Collapsing**: Toggle between expanded and collapsed states
+- **Filename**: Generated as `voice_{id}.wav` during export
+
+### Drawing Annotations
+
+Drawings are vector-based with:
+
+```typescript
+type Vector = {
+  line: Point[];           // Array of x,y coordinates
+  color: string;           // Stroke color
+  lineWidth: number;       // Stroke width
+  lineCap: "round" | "square" | "butt"; // Line cap style
+}
+```
+
+Each breakpoint has a single drawing layer that can contain multiple vectors (strokes).
+
+<Note>
+  Drawings use an HTML5 Canvas element with hardware acceleration for smooth rendering even with complex annotations.
+</Note>
+
+## Timeline Integration
+
+Breakpoints appear as colored markers on the video timeline:
+
+- **Visual Markers**: Circular indicators positioned at their timestamp percentage
+- **Clickable**: Click any breakpoint marker to jump to that moment
+- **Hover Effect**: Markers change color on hover for better visibility
+- **Filtered Display**: Only breakpoints within the valid range (0-100%) are shown
+
+<Tip>
+  The timeline uses `frameToPercentage()` to convert frame numbers to percentage positions, ensuring accurate placement regardless of video length or trim settings.
+</Tip>
+
+## Active Breakpoint
+
+Creative! tracks which breakpoint is currently selected:
+
+- **Selection**: Click a timeline marker or use `setCurrentBreakpoint(timeStamp)`
+- **Deselection**: Set to `null` when starting playback or manually seeking
+- **Display**: Only the active breakpoint's annotations are visible
+
+```typescript
+// The active breakpoint is exposed as a ref
+const activeBreakpoint: Ref<Breakpoint | null>
+```
+
+## Breakpoint Management
+
+### Removing Breakpoints
+
+You can remove breakpoints individually or all at once:
+
+- `removeBreakpoint(timeStamp)`: Delete a specific breakpoint
+- `removeAllBreakpoints()`: Clear all breakpoints from the analysis
+- `resetBreakpointState()`: Complete reset of breakpoint data
+
+### Cleanup After Trimming
+
+When you trim the video, Creative! automatically manages breakpoints:
+
+<Steps>
+  <Step title="Identify Range">
+    The trim operation calculates the new absolute start and end times based on your trim selection.
+  </Step>
+  
+  <Step title="Clean Up">
+    `cleanupBreakpoints(minTime, maxTime)` removes any breakpoints that fall outside the new time range.
+  </Step>
+  
+  <Step title="Preserve Annotations">
+    Breakpoints within the trimmed range are preserved with all their annotations intact.
+  </Step>
+</Steps>
+
+<Info>
+  The cleanup function is automatically called in PlaybackControls.vue:94 when you confirm a trim operation, ensuring your analysis stays synchronized with the trimmed video.
+</Info>
+
+## Persistence and Loading
+
+Breakpoints can be saved and loaded:
+
+- **Export**: Breakpoints are included in `.an` analysis files
+- **Import**: `loadBreakpointData(breakpoints)` restores breakpoints from saved data
+- **Timestamp Adjustment**: When loading trimmed videos, timestamps are automatically adjusted to match the new video start time
+
+### Data Flow During Export
+
+When exporting an analysis file:
+
+1. Breakpoints are deep cloned to avoid mutating app state
+2. Voice content Blobs are written to temporary WAV files
+3. If the video is trimmed, breakpoint timestamps are shifted relative to the new start (timestamp - videoStart)
+4. File paths are collected and passed to the Rust backend for ZIP packaging
+
+<Accordion title="Example: Breakpoint Export Data">
+```json
+{
+  "breakpoints": [
+    {
+      "timeStamp": 150.5,
+      "textContent": [
+        {
+          "id": 1,
+          "type": "text",
+          "content": "Great combo here",
+          "position": { "top": 20, "left": 30 },
+          "dimensions": { "width": 25, "height": 15 }
+        }
+      ],
+      "voiceContent": [
+        {
+          "id": 2,
+          "type": "voice",
+          "filename": "voice_2.wav",
+          "duration": 5.2,
+          "position": { "top": 50, "left": 10 },
+          "dimensions": { "width": 20, "height": 10 }
+        }
+      ],
+      "drawingContent": {
+        "id": 3,
+        "type": "drawing",
+        "content": [
+          {
+            "line": [{"x": 100, "y": 200}, {"x": 150, "y": 220}],
+            "color": "#ff0000",
+            "lineWidth": 3,
+            "lineCap": "round"
+          }
+        ],
+        "position": { "top": 0, "left": 0 },
+        "dimensions": { "width": 100, "height": 100 }
+      }
+    }
+  ],
+  "videoStart": null,
+  "videoEnd": 300.0
+}
+```
+</Accordion>
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Organize by Moments" icon="clock">
+    Create breakpoints at key moments like clutch plays, mistakes, or learning opportunities for easier review.
+  </Card>
+  
+  <Card title="Combine Annotation Types" icon="layer-group">
+    Use multiple annotation types on the same breakpoint for comprehensive analysis - draw to highlight, add text for notes, record voice for detailed explanations.
+  </Card>
+  
+  <Card title="Review Before Trimming" icon="scissors">
+    Check your breakpoints before trimming video to ensure you won't lose important analysis points.
+  </Card>
+  
+  <Card title="Descriptive Content" icon="message">
+    Add clear, descriptive text and voice notes so you can understand your analysis when reviewing later.
+  </Card>
+</CardGroup>

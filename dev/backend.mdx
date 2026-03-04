@@ -1,0 +1,759 @@
+---
+title: Backend Architecture
+description: Tauri commands, video server implementation, and plugin system
+---
+
+## Overview
+
+The Creative! backend is built with **Tauri 2.x** and Rust, providing:
+- **Tauri Commands**: Frontend-callable functions for file I/O
+- **Video Server**: HTTP server for video streaming (macOS/Linux only)
+- **Plugin System**: Custom audio recorder and official Tauri plugins
+
+## Tauri Commands
+
+Commands are exposed to the frontend via `invoke()` from `@tauri-apps/api/core`.
+
+### pack_analysis_file
+
+Packs video, analysis data, and audio recordings into a single `.an` archive (ZIP format).
+
+#### Signature
+
+```rust
+#[tauri::command]
+fn pack_analysis_file(
+    save_path: String,
+    video_path: String,
+    data_json: String,
+    audio_paths: HashMap<String, String>,
+) -> Result<(), String>
+```
+
+**Reference:** `src-tauri/src/lib.rs:228-268`
+
+#### Parameters
+
+<ParamField path="save_path" type="String" required>
+  Absolute path where the `.an` file will be created (e.g., `/Users/name/Desktop/analysis.an`)
+</ParamField>
+
+<ParamField path="video_path" type="String" required>
+  Absolute path to the source video file. Extension is preserved in the archive (e.g., `video.mp4`, `video.webm`)
+</ParamField>
+
+<ParamField path="data_json" type="String" required>
+  JSON string containing `AnalysisExportData` (breakpoints, trim boundaries, metadata)
+</ParamField>
+
+<ParamField path="audio_paths" type="HashMap<String, String>" required>
+  Map of `filename` → `absolute_path` for audio recordings. Keys become filenames in `audio/` directory within the archive.
+  
+  Example: `{ "recording-123.wav": "/tmp/rec.wav" }`
+</ParamField>
+
+#### Implementation Details
+
+<Steps>
+  <Step title="Create ZIP writer">
+    ```rust
+    let file = File::create(&save_path)
+        .map_err(|e| format!("Failed to create save file: {}", e))?;
+    let mut zip = zip::ZipWriter::new(file);
+    
+    let options = SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated)
+        .unix_permissions(0o755);
+    ```
+  </Step>
+  <Step title="Write data.json">
+    ```rust
+    zip.start_file("data.json", options)
+        .map_err(|e| format!("Failed to start data.json: {}", e))?;
+    zip.write_all(data_json.as_bytes())
+        .map_err(|e| format!("Failed to write data.json: {}", e))?;
+    ```
+  </Step>
+  <Step title="Stream video file">
+    ```rust
+    let extension = std::path::Path::new(&video_path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("mp4");
+    
+    zip.start_file(format!("video.{}", extension), options)?;
+    let mut video_file = File::open(&video_path)?;
+    std::io::copy(&mut video_file, &mut zip)?;
+    ```
+    
+    <Note>Uses `std::io::copy` for efficient streaming without loading entire file into memory</Note>
+  </Step>
+  <Step title="Stream audio files">
+    ```rust
+    if !audio_paths.is_empty() {
+        zip.add_directory("audio", options)?;
+        for (filename, path) in audio_paths {
+            zip.start_file(format!("audio/{}", filename), options)?;
+            let mut audio_file = File::open(&path)?;
+            std::io::copy(&mut audio_file, &mut zip)?;
+        }
+    }
+    ```
+  </Step>
+  <Step title="Finalize archive">
+    ```rust
+    zip.finish()
+        .map_err(|e| format!("Failed to finish zip: {}", e))?;
+    ```
+  </Step>
+</Steps>
+
+**Reference:** `src-tauri/src/lib.rs:228-268`
+
+#### Frontend Usage
+
+```typescript
+import { invoke } from '@tauri-apps/api/core'
+
+// Prepare audio paths map
+const audioPaths: Record<string, string> = {}
+for (const bp of breakpoints) {
+  for (const vc of bp.voiceContent) {
+    if (vc.filename && vc.filePath) {
+      audioPaths[vc.filename] = vc.filePath
+    }
+  }
+}
+
+// Invoke command
+try {
+  await invoke('pack_analysis_file', {
+    savePath: '/Users/name/Desktop/my-analysis.an',
+    videoPath: videoPath.value,
+    dataJson: JSON.stringify({
+      breakpoints,
+      videoStart: playbackControls.videoStart.value,
+      videoEnd: playbackControls.totalDuration.value
+    }),
+    audioPaths
+  })
+  console.log('Export successful!')
+} catch (error) {
+  console.error('Export failed:', error)
+}
+```
+
+### unpack_analysis_file
+
+Extracts a `.an` archive and returns the `data.json` contents as a string.
+
+#### Signature
+
+```rust
+#[tauri::command]
+fn unpack_analysis_file(
+    archive_path: String,
+    target_dir: String
+) -> Result<String, String>
+```
+
+**Reference:** `src-tauri/src/lib.rs:182-225`
+
+#### Parameters
+
+<ParamField path="archive_path" type="String" required>
+  Absolute path to the `.an`/`.anal` file to unpack
+</ParamField>
+
+<ParamField path="target_dir" type="String" required>
+  Directory where contents will be extracted. Created if it doesn't exist.
+</ParamField>
+
+#### Return Value
+
+<ResponseField name="data.json" type="String">
+  Raw JSON string from `data.json` within the archive. Frontend must parse with `JSON.parse()`.
+</ResponseField>
+
+#### Implementation Details
+
+<CodeGroup>
+```rust Archive Reading
+let file = File::open(&archive_path)
+    .map_err(|e| format!("Failed to open archive: {}", e))?;
+let mut archive = zip::ZipArchive::new(file)
+    .map_err(|e| format!("Failed to read zip: {}", e))?;
+
+let mut data_json_content = String::new();
+
+// Ensure base directories exist even if zip is empty
+let base_path = std::path::Path::new(&target_dir);
+fs::create_dir_all(&base_path)?;
+fs::create_dir_all(&base_path.join("audio"))?;
+```
+
+```rust File Extraction
+for i in 0..archive.len() {
+    let mut file = archive.by_index(i)?;
+    let outpath = match file.enclosed_name() {
+        Some(path) => std::path::Path::new(&target_dir).join(path),
+        None => continue,
+    };
+    
+    if file.name().ends_with('/') {
+        fs::create_dir_all(&outpath)?;
+    } else {
+        // Create parent directories
+        if let Some(p) = outpath.parent() {
+            if !p.exists() {
+                fs::create_dir_all(p)?;
+            }
+        }
+        
+        // Extract file
+        let mut outfile = File::create(&outpath)?;
+        std::io::copy(&mut file, &mut outfile)?;
+        
+        // Capture data.json contents
+        if file.name() == "data.json" {
+            let mut re_file = File::open(&outpath)?;
+            re_file.read_to_string(&mut data_json_content)?;
+        }
+    }
+}
+```
+
+```rust Return Value
+if data_json_content.is_empty() {
+    return Err("data.json not found in archive".to_string());
+}
+
+Ok(data_json_content)
+```
+</CodeGroup>
+
+**Reference:** `src-tauri/src/lib.rs:182-225`
+
+<Warning>
+  The command returns the raw JSON string, not a parsed object. The frontend must parse it:
+  
+  ```typescript
+  const dataJsonStr = await invoke<string>('unpack_analysis_file', { ... })
+  const analysisData = JSON.parse(dataJsonStr)
+  ```
+</Warning>
+
+#### Frontend Usage
+
+```typescript
+import { invoke } from '@tauri-apps/api/core'
+import { appDataDir, join } from '@tauri-apps/api/path'
+
+const fileName = 'my-analysis.an'
+const appData = await appDataDir()
+const extractionTarget = await join(appData, 'temp', fileName + '_extracted')
+
+const dataJsonStr = await invoke<string>('unpack_analysis_file', {
+  archivePath: '/Users/name/Downloads/my-analysis.an',
+  targetDir: extractionTarget
+})
+
+const parsedData = JSON.parse(dataJsonStr)
+analysisData.value = parsedData
+
+// Video file is now at: extractionTarget/video.{ext}
+// Audio files are at: extractionTarget/audio/*.wav
+```
+
+**Reference:** Frontend usage in `src/components/store/hooks/useFileUpload.ts:75-106`
+
+### get_video_server_port
+
+Returns the ephemeral port number assigned to the video HTTP server (macOS/Linux) or `0` (Windows).
+
+#### Signature
+
+```rust
+#[tauri::command]
+fn get_video_server_port() -> u16
+```
+
+**Reference:** `src-tauri/src/lib.rs:14-23`
+
+#### Platform Behavior
+
+<Tabs>
+  <Tab title="macOS/Linux">
+    ```rust
+    #[cfg(not(target_os = "windows"))]
+    #[tauri::command]
+    fn get_video_server_port() -> u16 {
+        *SERVER_PORT.lock().unwrap()
+    }
+    ```
+    
+    Returns the actual port (e.g., `54321`) assigned by the OS when the server binds to `127.0.0.1:0`.
+  </Tab>
+  <Tab title="Windows">
+    ```rust
+    #[cfg(target_os = "windows")]
+    #[tauri::command]
+    fn get_video_server_port() -> u16 {
+        0
+    }
+    ```
+    
+    Always returns `0` because Windows uses the asset protocol instead of HTTP.
+  </Tab>
+</Tabs>
+
+#### Frontend Usage
+
+```typescript
+import { invoke } from '@tauri-apps/api/core'
+import { type } from '@tauri-apps/plugin-os'
+
+const port = await invoke<number>('get_video_server_port')
+
+if (type() !== 'windows') {
+  // Build HTTP URL
+  const videoUrl = `http://127.0.0.1:${port}/?path=${encodeURIComponent(videoPath)}`
+} else {
+  // Use asset protocol
+  const videoUrl = convertFileSrc(videoPath)
+}
+```
+
+**Reference:** Frontend usage in `src/components/store/hooks/useFileUpload.ts:16-27`
+
+## Video Server (macOS/Linux)
+
+<Info>
+  On macOS and Linux, Creative! runs a local HTTP server using `tiny_http` to serve video files. This bypasses WebKit/GStreamer limitations and provides full Range request support for seeking.
+</Info>
+
+### Why an HTTP Server?
+
+<CardGroup cols={2}>
+  <Card title="WebKit Limitations" icon="triangle-exclamation">
+    - macOS/Linux WebView uses WebKit, which has strict CORS policies
+    - `file://` URLs don't support Range requests well
+    - Asset protocol (`asset://`) has inconsistent behavior across platforms
+  </Card>
+  <Card title="HTTP Benefits" icon="check">
+    - Full HTTP Range request support (206 Partial Content)
+    - Efficient video seeking without buffering entire file
+    - Standard CORS headers for cross-origin access
+    - Works identically across macOS and Linux
+  </Card>
+</CardGroup>
+
+### Implementation
+
+#### Server Initialization
+
+```rust
+use once_cell::sync::Lazy;
+use std::sync::Mutex;
+
+#[cfg(not(target_os = "windows"))]
+static SERVER_PORT: Lazy<Mutex<u16>> = Lazy::new(|| Mutex::new(0));
+
+#[cfg(not(target_os = "windows"))]
+fn start_video_server() {
+    thread::spawn(move || {
+        // Bind to ephemeral port
+        let server = match tiny_http::Server::http("127.0.0.1:0") {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("Failed to start video server: {}", e);
+                return;
+            }
+        };
+        
+        // Extract assigned port
+        let port = match server.server_addr() {
+            tiny_http::ListenAddr::IP(addr) => addr.port(),
+            _ => {
+                eprintln!("Server listening on unknown address type");
+                return;
+            }
+        };
+        *SERVER_PORT.lock().unwrap() = port;
+        
+        // Request handling loop
+        for request in server.incoming_requests() {
+            // Handle CORS preflight
+            if request.method() == tiny_http::Method::Options {
+                let headers = vec![
+                    tiny_http::Header::from_bytes("Access-Control-Allow-Origin", "*").unwrap(),
+                    tiny_http::Header::from_bytes("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS").unwrap(),
+                    tiny_http::Header::from_bytes("Access-Control-Allow-Headers", "*").unwrap(),
+                ];
+                let response = tiny_http::Response::empty(204).with_headers(headers);
+                let _ = request.respond(response);
+                continue;
+            }
+            
+            // Handle GET requests (video streaming)
+            // ... (see Range Request Handling below)
+        }
+    });
+}
+```
+
+**Reference:** `src-tauri/src/lib.rs:26-179`
+
+<Note>
+  The server is started in `pub fn run()` before the Tauri window opens, ensuring the port is available when the frontend loads.
+  
+  ```rust
+  pub fn run() {
+      start_video_server();
+      tauri::Builder::default()
+          // ...
+  }
+  ```
+</Note>
+
+#### URL Format
+
+The server expects a query parameter `?path=<url_encoded_absolute_path>`:
+
+```
+http://127.0.0.1:54321/?path=%2FUsers%2Fname%2FVideos%2Fgameplay.mp4
+```
+
+Decoded: `/Users/name/Videos/gameplay.mp4`
+
+#### Range Request Handling
+
+<Info>
+  Full support for HTTP Range requests enables efficient video seeking without downloading the entire file.
+</Info>
+
+<Steps>
+  <Step title="Parse URL and decode path">
+    ```rust
+    let url = request.url().to_string();
+    let path_encoded = if let Some(idx) = url.find("?path=") {
+        &url[idx + 6..]
+    } else {
+        let _ = request.respond(tiny_http::Response::empty(400));
+        continue;
+    };
+    
+    let path = match urlencoding::decode(path_encoded) {
+        Ok(p) => p.into_owned(),
+        Err(_) => {
+            let _ = request.respond(tiny_http::Response::empty(400));
+            continue;
+        }
+    };
+    ```
+  </Step>
+  <Step title="Open file and get metadata">
+    ```rust
+    let file = match File::open(&path) {
+        Ok(f) => f,
+        Err(e) => {
+            eprintln!("Failed to open file: {}", e);
+            let _ = request.respond(tiny_http::Response::empty(404));
+            continue;
+        }
+    };
+    
+    let len = match file.metadata() {
+        Ok(m) => m.len(),
+        Err(_) => {
+            let _ = request.respond(tiny_http::Response::empty(500));
+            continue;
+        }
+    };
+    
+    let mime_type = mime_guess::from_path(&path)
+        .first_or_octet_stream()
+        .to_string();
+    ```
+  </Step>
+  <Step title="Parse Range header">
+    ```rust
+    let mut start = 0;
+    let mut end = len - 1;
+    let mut status_code = 200;
+    
+    for header in request.headers() {
+        if header.field.equiv("Range") {
+            let range_value = header.value.as_str();
+            if let Some(range_str) = range_value.strip_prefix("bytes=") {
+                let parts: Vec<&str> = range_str.split('-').collect();
+                if parts.len() >= 1 {
+                    if let Ok(s) = parts[0].parse::<u64>() {
+                        start = s;
+                    }
+                    if parts.len() > 1 && !parts[1].is_empty() {
+                        if let Ok(e) = parts[1].parse::<u64>() {
+                            end = e;
+                        }
+                    }
+                }
+                status_code = 206;
+            }
+        }
+    }
+    ```
+  </Step>
+  <Step title="Cap chunk size (safety)">
+    ```rust
+    if start >= len {
+        let _ = request.respond(tiny_http::Response::empty(416));
+        continue;
+    }
+    
+    if end >= len {
+        end = len - 1;
+    }
+    
+    // Cap chunk size to 4MB for safety
+    let mut chunk_len = (end - start + 1) as usize;
+    if status_code == 206 {
+        let max_chunk_size = 4 * 1024 * 1024;
+        if (end - start + 1) > max_chunk_size {
+            end = start + max_chunk_size - 1;
+            chunk_len = (end - start + 1) as usize;
+        }
+    }
+    ```
+  </Step>
+  <Step title="Seek and stream response">
+    ```rust
+    let mut file = file;
+    if let Err(_) = file.seek(SeekFrom::Start(start)) {
+        let _ = request.respond(tiny_http::Response::empty(500));
+        continue;
+    }
+    
+    let reader = file.take(chunk_len as u64);
+    
+    let mut headers = vec![
+        tiny_http::Header::from_bytes("Content-Type", mime_type.as_bytes()).unwrap(),
+        tiny_http::Header::from_bytes("Accept-Ranges", "bytes").unwrap(),
+        tiny_http::Header::from_bytes("Access-Control-Allow-Origin", "*").unwrap(),
+    ];
+    
+    if status_code == 206 {
+        let range_str = format!("bytes {}-{}/{}", start, end, len);
+        headers.push(
+            tiny_http::Header::from_bytes("Content-Range", range_str.as_bytes()).unwrap(),
+        );
+    }
+    
+    let response = tiny_http::Response::new(
+        tiny_http::StatusCode(status_code),
+        headers,
+        reader,
+        Some(chunk_len),
+        None,
+    );
+    
+    let _ = request.respond(response);
+    ```
+  </Step>
+</Steps>
+
+**Reference:** `src-tauri/src/lib.rs:60-177`
+
+<Warning>
+  The 4MB chunk size limit prevents memory spikes when browsers request large ranges. For normal video playback, browsers request smaller chunks anyway.
+</Warning>
+
+### CORS Configuration
+
+All responses include permissive CORS headers:
+
+```rust
+tiny_http::Header::from_bytes("Access-Control-Allow-Origin", "*").unwrap()
+```
+
+This allows the WebView to access video resources served from `127.0.0.1`.
+
+## Plugin System
+
+Tauri plugins extend the backend with additional functionality.
+
+### Registered Plugins
+
+```rust
+tauri::Builder::default()
+    .plugin(tauri_plugin_shell::init())
+    .plugin(tauri_plugin_os::init())
+    .plugin(tauri_plugin_dialog::init())
+    .plugin(tauri_plugin_opener::init())
+    .plugin(tauri_plugin_fs::init())
+    .plugin(tauri_plugin_audio_recorder::init())
+    .invoke_handler(tauri::generate_handler![
+        get_video_server_port,
+        unpack_analysis_file,
+        pack_analysis_file
+    ])
+    .run(tauri::generate_context!())
+    .expect("error while running tauri application");
+```
+
+**Reference:** `src-tauri/src/lib.rs:277-290`
+
+### Official Plugins
+
+<CardGroup cols={3}>
+  <Card title="shell" icon="terminal">
+    Execute shell commands (used for FFmpeg integration)
+  </Card>
+  <Card title="os" icon="desktop">
+    OS detection (`type()` returns `"windows"`, `"macos"`, `"linux"`)
+  </Card>
+  <Card title="dialog" icon="folder-open">
+    Native file picker dialogs
+  </Card>
+  <Card title="fs" icon="file">
+    Filesystem operations with permissions
+  </Card>
+  <Card title="opener" icon="arrow-up-right-from-square">
+    Open files/URLs with default system handler
+  </Card>
+</CardGroup>
+
+### Custom Plugin: audio-recorder
+
+<Info>
+  The audio recorder is a custom Tauri plugin built from scratch. See the [Audio Plugin documentation](/dev/audio-plugin) for details.
+</Info>
+
+**Key features:**
+- Cross-platform audio recording (cpal + hound)
+- WAV file output
+- Pause/resume support
+- Device enumeration
+
+**Plugin location:** `src-tauri/tauri-plugin-audio-recorder/`
+
+**Initialization:**
+```rust
+.plugin(tauri_plugin_audio_recorder::init())
+```
+
+## Cargo.toml Configuration
+
+```toml
+[package]
+name = "Creative"
+version = "0.2.0"
+description = "A gameplay analysis tool!"
+authors = ["Franco Picco"]
+edition = "2021"
+
+[lib]
+name = "creative_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[dependencies]
+tauri = { version = "2", features = ["protocol-asset"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+zip = "8.1.0"
+tiny_http = "0.12.0"
+once_cell = "1.21.3"
+urlencoding = "2.1.3"
+mime_guess = "2.0.5"
+
+# Tauri plugins
+tauri-plugin-opener = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2.4.3"
+tauri-plugin-os = "2.3.2"
+tauri-plugin-shell = "2.3.5"
+tauri-plugin-audio-recorder = { path = "./tauri-plugin-audio-recorder" }
+```
+
+**Reference:** `src-tauri/Cargo.toml`
+
+<Note>
+  The `protocol-asset` feature is required for Windows to use the asset protocol for video playback.
+</Note>
+
+## Tauri Configuration
+
+```json
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Creative!",
+  "version": "0.2.4",
+  "identifier": "creative",
+  "build": {
+    "beforeDevCommand": "yarn dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "yarn build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [{
+      "title": "Creative!",
+      "width": 1280,
+      "height": 720,
+      "minWidth": 700,
+      "minHeight": 600,
+      "maximized": true
+    }],
+    "security": {
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["**"]
+      },
+      "csp": "default-src 'self'; connect-src 'self' http://127.0.0.1:* ws://127.0.0.1:*; media-src 'self' asset: http://asset.localhost blob: http://127.0.0.1:*; img-src 'self' asset: http://asset.localhost data:;"
+    }
+  },
+  "bundle": {
+    "externalBin": ["binaries/creative-ffmpeg"]
+  }
+}
+```
+
+**Reference:** `src-tauri/tauri.conf.json`
+
+### CSP Breakdown
+
+<CodeGroup>
+```text Default Sources
+default-src 'self'
+```
+Only allow resources from the app origin.
+
+```text Connections
+connect-src 'self' http://127.0.0.1:* ws://127.0.0.1:*
+```
+Allow WebSocket and HTTP connections to localhost (video server).
+
+```text Media Sources
+media-src 'self' asset: http://asset.localhost blob: http://127.0.0.1:*
+```
+Allow video from:
+- App origin (`'self'`)
+- Asset protocol (`asset:` and `http://asset.localhost`)
+- Blob URLs (`blob:`)
+- Localhost HTTP server (`http://127.0.0.1:*`)
+
+```text Images
+img-src 'self' asset: http://asset.localhost data:
+```
+Allow images from app, assets, and data URIs.
+</CodeGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Audio Plugin" icon="microphone" href="/dev/audio-plugin">
+    Explore the custom audio recorder plugin implementation
+  </Card>
+  <Card title="Frontend Architecture" icon="code" href="/dev/frontend">
+    Learn about Vue 3 components and state management
+  </Card>
+</CardGroup>

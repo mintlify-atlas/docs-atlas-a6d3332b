@@ -1,0 +1,244 @@
+---
+title: Text Notes
+description: Add positioned text annotations to video frames for detailed gameplay analysis
+---
+
+Text Notes allow you to add written commentary directly on video frames. Unlike voice notes or drawings, text notes provide structured, searchable, and easily editable annotations that remain visible at specific timestamps.
+
+## How It Works
+
+Text notes are positioned elements that overlay your video at specific coordinates. Each note consists of:
+
+- **Position**: Percentage-based coordinates `{left, top}` that scale with window size
+- **Dimensions**: Resizable width and height (also percentage-based)
+- **Content**: Plain text with support for line breaks
+- **Collapsed state**: Notes can be minimized to just an icon
+
+The positioning system uses percentage values (0-100) rather than pixels, ensuring notes maintain their relative position when you resize the Creative! window.
+
+## Creating Text Notes
+
+<Steps>
+  <Step title="Activate Text Mode">
+    Click the **Text Note** tool in the analysis sidebar. The tool will highlight when active.
+  </Step>
+  
+  <Step title="Click to Place">
+    Click anywhere on the video frame where you want to add a note. A text input area appears with a drag handle icon.
+  </Step>
+  
+  <Step title="Type Your Note">
+    Click inside the text area and start typing. The area automatically saves as you type.
+  </Step>
+  
+  <Step title="Resize if Needed">
+    Drag the bottom-right corner of the text area to resize it. The note automatically scales to prevent overflow.
+  </Step>
+</Steps>
+
+## Positioning and Layout
+
+### Drag and Drop
+
+Click and hold the text icon (drag handle) to move the note to a new position. The note follows your cursor until you release the mouse button.
+
+<Tip>
+To quickly toggle a note between expanded and collapsed states, click the icon without dragging.
+</Tip>
+
+### Automatic Flipping
+
+Text notes automatically flip their layout to stay within the video bounds:
+
+**Horizontal Flip** (`isFlippedX` in `TextNote.vue:51-54`)
+- Triggers when note would extend beyond 98% of the right edge
+- Flips the note to extend leftward instead
+- Preserves the icon position as the anchor point
+
+**Vertical Flip** (`isFlippedY` in `TextNote.vue:56-58`)
+- Triggers when note would extend beyond 98% of the bottom edge
+- Flips the note to extend upward instead
+
+### Smart Boundaries
+
+The positioning system enforces maximum dimensions based on the note's position:
+
+```typescript
+// Normal positioning (top-left anchor)
+maxWidth = 100% - position.left
+maxHeight = 100% - position.top
+
+// Flipped positioning (adjusts anchor point)
+maxWidth = position.left  // When flipped horizontally
+maxHeight = position.top  // When flipped vertically
+```
+
+This prevents notes from extending beyond the video container boundaries.
+
+## Resizing Text Notes
+
+Text notes support native browser resizing via the textarea element's `resize: both` CSS property.
+
+### How Resizing Works
+
+1. **Drag the resize handle** (bottom-right corner of the text area)
+2. **ResizeObserver detects changes** and calculates new percentage-based dimensions
+3. **Debounced updates** (50ms delay) prevent excessive recalculations
+4. **Position-aware clamping** ensures notes stay within bounds
+
+The implementation uses a ResizeObserver (`TextNote.vue:130-183`) to track manual resizing and convert pixel dimensions back to percentages for responsive storage.
+
+<Note>
+Resize operations account for the icon width (6rem) and gap (1rem) to calculate total note dimensions accurately.
+</Note>
+
+## Collapsed State
+
+Collapse text notes to reduce screen clutter while preserving their position:
+
+**To Collapse**: Click the text icon without dragging
+**To Expand**: Click the icon again
+
+When collapsed:
+- Only the icon is visible (rounded background)
+- The icon has a semi-transparent background that highlights on hover
+- The note's content is preserved but hidden
+- Position and dimensions are maintained
+
+<Tip>
+Use collapsed notes as visual markers during playback, then expand them when you need to read or edit the content.
+</Tip>
+
+## Text Formatting
+
+Text notes currently support:
+
+- **Line breaks**: Press Enter to create new lines
+- **Plain text**: No rich text formatting (bold, italic, etc.)
+- **Unlimited length**: Text areas scroll vertically when content exceeds height
+
+<Note>
+Rich text formatting is not currently supported. Use markdown-style notation if you need to indicate emphasis (e.g., *italics* or **bold**).
+</Note>
+
+## Technical Implementation
+
+### Percentage-Based Positioning
+
+Text notes use percentage-based coordinates calculated from mouse events (`handleText.ts:7-34`):
+
+```typescript
+const rect = container.getBoundingClientRect()
+const x = e.clientX - rect.left
+const y = e.clientY - rect.top
+
+const xPercent = Number(((x / rect.width) * 100).toFixed(2))
+const yPercent = Number(((y / rect.height) * 100).toFixed(2))
+```
+
+Default dimensions are 30% width × 20% height, which scales appropriately for most screen sizes.
+
+### Responsive Dimensions
+
+The component uses CSS custom properties to apply percentage-based dimensions:
+
+```css
+.text-note-container {
+  width: var(--text-width);   /* Set from props.dimensions.width */
+  height: var(--text-height); /* Set from props.dimensions.height */
+}
+```
+
+This approach ensures smooth scaling during window resize while maintaining the ability to resize notes manually.
+
+### Drag Implementation
+
+The drag system emits a `dragStart` event when you click the icon, which is handled by the parent component to:
+
+1. Calculate mouse offset from note position
+2. Update position on `mousemove` events
+3. Emit `mouseup` to finalize the position
+4. Save updated coordinates to the breakpoint data
+
+## Best Practices
+
+### Writing Effective Notes
+
+- **Be concise**: Notes are for quick reference, not essays
+- **Use bullet points**: Press Enter to create lists manually
+- **Reference timestamps**: Mention specific times if discussing multiple moments
+- **Categorize**: Use consistent phrasing for similar types of notes
+
+### Positioning Strategy
+
+- **Point to relevant areas**: Position notes near the gameplay elements you're discussing
+- **Avoid overlap**: Space notes to prevent covering important video content
+- **Use collapsed state**: Minimize notes when you have multiple on one frame
+- **Consider export**: Remember that notes will appear in exported videos
+
+<Warning>
+Text notes are part of breakpoint data. Deleting a breakpoint removes all associated text notes permanently.
+</Warning>
+
+## Export Behavior
+
+When exporting your analysis:
+
+- Text content is stored as plain UTF-8 strings in JSON
+- Position and dimensions are preserved exactly
+- Collapsed state is saved and restored
+- Flip state (invertedX/invertedY) is stored for consistent layout
+- No separate files are created (text is embedded in the analysis data)
+
+## Troubleshooting
+
+### Note position shifts after resizing window
+
+This shouldn't happen with percentage-based positioning. If it does:
+- Reload the analysis file to recalculate positions
+- Check that you're using the latest version of Creative!
+
+### Cannot resize note smaller
+
+The browser enforces minimum textarea dimensions:
+- Minimum width: ~150px (set in CSS)
+- Minimum browser-enforced size: varies by browser
+
+### Text is cut off at edges
+
+If text appears truncated:
+- Drag the note away from the edge
+- The auto-flip boundary is at 98% to prevent this
+- Resize the note to fit more content
+
+### Drag handle not responding
+
+Ensure you're clicking directly on the text icon, not the text area itself. The icon has a hover state that indicates it's draggable.
+
+## Keyboard Shortcuts
+
+| Action | Shortcut |
+|--------|----------|
+| Toggle Text Mode | `T` |
+| Delete Selected Note | `Delete` or `Backspace` |
+| Focus Next Note | `Tab` |
+| Focus Previous Note | `Shift+Tab` |
+
+<Note>
+Keyboard shortcuts require the video player to have focus. Click on the video before using shortcuts.
+</Note>
+
+## Comparison with Voice Notes
+
+| Feature | Text Notes | Voice Notes |
+|---------|------------|-------------|
+| **Searchable** | Yes | No |
+| **Editable** | Yes | No |
+| **File size** | Minimal | Larger (audio files) |
+| **Speed** | Fast to review | Must play back |
+| **Detail** | Concise | Conversational |
+| **Use case** | Quick facts, labels | Detailed analysis, emotion |
+
+<Tip>
+Use text notes for structured information and voice notes for detailed explanations. Combining both creates comprehensive analysis documentation.
+</Tip>

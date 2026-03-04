@@ -1,0 +1,252 @@
+---
+title: Development Environment Setup
+description: Set up your development environment to contribute to Creative!
+---
+
+# Development Environment Setup
+
+This guide will help you set up your development environment for Creative!, a cross-platform desktop app for gameplay analysis built with Tauri and Vue.
+
+## Overview
+
+Creative! is built using:
+- **Frontend**: Vue 3 + TypeScript + Vite
+- **Backend**: Rust + Tauri 2
+- **Video Processing**: FFmpeg (automatically downloaded)
+- **Audio Recording**: Custom Tauri plugin
+
+## Prerequisites
+
+<Steps>
+  <Step title="Install Node.js and npm">
+    Creative! requires Node.js and npm for frontend development.
+
+    Download and install from the [official Node.js website](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm).
+
+    Verify installation:
+    ```bash
+    node --version
+    npm --version
+    ```
+
+    <Note>
+      The project uses Node.js LTS version. The CI/CD pipeline uses `node-version: lts/*`.
+    </Note>
+  </Step>
+
+  <Step title="Install Rust">
+    Tauri requires Rust to build the native application.
+
+    Install Rust using rustup:
+    ```bash
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+    ```
+
+    For Windows, download from [rustup.rs](https://rustup.rs/).
+
+    Verify installation:
+    ```bash
+    rustc --version
+    cargo --version
+    ```
+  </Step>
+
+  <Step title="Install Visual Studio C++ Build Tools (Windows)">
+    <Warning>
+      **Windows users**: This step is mandatory!
+    </Warning>
+
+    Creative! uses Tauri and Vue, which require Visual Studio C++ dependencies to compile and build.
+
+    Download and install [Visual Studio](https://visualstudio.microsoft.com/downloads/) with the following workloads:
+    - Desktop development with C++
+    - Windows 10/11 SDK
+
+    <Note>
+      You can install just the Build Tools if you don't need the full Visual Studio IDE.
+    </Note>
+  </Step>
+
+  <Step title="Install System Dependencies (Linux)">
+    On Ubuntu/Debian-based systems, install the required libraries:
+
+    ```bash
+    sudo apt-get update
+    sudo apt-get install -y libwebkit2gtk-4.1-dev \
+      libappindicator3-dev \
+      librsvg2-dev \
+      patchelf \
+      libasound2-dev \
+      gstreamer1.0-plugins-good \
+      gstreamer1.0-plugins-bad \
+      gstreamer1.0-plugins-ugly \
+      gstreamer1.0-libav
+    ```
+
+    <Note>
+      These dependencies are required for WebKit rendering, system tray icons, audio recording, and video playback.
+    </Note>
+  </Step>
+
+  <Step title="Install macOS Dependencies">
+    On macOS, you'll need Xcode Command Line Tools:
+
+    ```bash
+    xcode-select --install
+    ```
+  </Step>
+</Steps>
+
+## Project Setup
+
+<Steps>
+  <Step title="Clone the Repository">
+    ```bash
+    git clone https://github.com/yourusername/creative.git
+    cd creative
+    ```
+  </Step>
+
+  <Step title="Install Dependencies">
+    Creative! supports multiple package managers. Choose one:
+
+    <CodeGroup>
+      ```bash npm
+      npm install
+      ```
+
+      ```bash yarn
+      yarn install
+      ```
+
+      ```bash pnpm
+      pnpm install
+      ```
+    </CodeGroup>
+
+    <Note>
+      The project uses `yarn` in its CI/CD pipeline. We recommend using yarn for consistency.
+    </Note>
+  </Step>
+
+  <Step title="FFmpeg Auto-Download">
+    During `postinstall`, FFmpeg binaries are automatically downloaded for all platforms.
+
+    The `download_ffmpeg.cjs` script downloads platform-specific FFmpeg binaries:
+    - Windows (x64): `creative-ffmpeg-x86_64-pc-windows-msvc.exe`
+    - Linux (x64): `creative-ffmpeg-x86_64-unknown-linux-gnu`
+    - macOS (Intel): `creative-ffmpeg-x86_64-apple-darwin`
+    - macOS (Apple Silicon): `creative-ffmpeg-aarch64-apple-darwin`
+
+    Binaries are saved to `src-tauri/binaries/` and set as executable.
+
+    <Warning>
+      If the download fails, you may need to run it manually:
+      ```bash
+      node download_ffmpeg.cjs
+      ```
+    </Warning>
+  </Step>
+</Steps>
+
+## Verify Installation
+
+Check that everything is set up correctly:
+
+```bash
+# Check Node.js
+node --version
+
+# Check Rust
+rustc --version
+cargo --version
+
+# Check dependencies are installed
+ls node_modules/.bin
+
+# Check FFmpeg binaries
+ls src-tauri/binaries
+```
+
+You should see FFmpeg binaries for all platforms in the `src-tauri/binaries/` directory.
+
+## Troubleshooting
+
+### FFmpeg Download Fails
+
+If the automatic FFmpeg download fails during `npm install`:
+
+1. Check your internet connection
+2. Manually run the download script:
+   ```bash
+   node download_ffmpeg.cjs
+   ```
+3. If still failing, check if GitHub releases are accessible from your network
+
+### Rust Compilation Errors (Windows)
+
+**Error**: `link.exe not found` or similar linker errors
+
+**Solution**: Install Visual Studio C++ Build Tools with the "Desktop development with C++" workload.
+
+### WebKit Errors (Linux)
+
+**Error**: `webkit2gtk-4.1` not found
+
+**Solution**: Make sure you've installed all system dependencies:
+```bash
+sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+```
+
+### Port 1420 Already in Use
+
+**Error**: Vite fails to start because port 1420 is in use
+
+**Solution**: 
+- Kill the process using port 1420
+- Or modify `vite.config.ts` to use a different port (not recommended as Tauri expects port 1420)
+
+```bash
+# Linux/macOS
+lsof -i :1420
+kill -9 <PID>
+
+# Windows
+netstat -ano | findstr :1420
+taskkill /PID <PID> /F
+```
+
+### Cargo Build Fails
+
+**Error**: Rust dependencies fail to compile
+
+**Solution**:
+1. Update Rust to the latest stable version:
+   ```bash
+   rustup update stable
+   ```
+2. Clear Cargo cache and rebuild:
+   ```bash
+   cargo clean
+   cargo build
+   ```
+
+## Next Steps
+
+Now that your environment is set up, you can:
+- [Build and test the application](/dev/building)
+- [Learn about contributing](/dev/contributing)
+
+## Package Versions
+
+Current versions used in Creative!:
+
+| Package | Version |
+|---------|----------|
+| Tauri | 2.x |
+| Vue | 3.5.13 |
+| Vite | 6.0.3 |
+| TypeScript | 5.6.2 |
+| Rust Edition | 2021 |
+
+See `package.json` and `src-tauri/Cargo.toml` for the complete dependency list.

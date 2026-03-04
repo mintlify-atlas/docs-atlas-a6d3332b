@@ -1,0 +1,540 @@
+---
+title: Troubleshooting
+description: Solutions to common issues when using Creative! for gameplay analysis
+---
+
+This guide helps you resolve common issues you may encounter while using Creative!. If your problem isn't covered here, check the application console for error messages or report the issue to the development team.
+
+## Installation & Startup Issues
+
+### macOS Quarantine Error
+
+<Warning>
+This is the most common issue for macOS users.
+</Warning>
+
+**Problem**: When launching Creative! on macOS, you see an error message saying the app cannot be opened because it's from an unidentified developer, or the system quarantines the application.
+
+**Cause**: Creative! is not code-signed with an Apple Developer certificate, so macOS security (Gatekeeper) blocks it by default.
+
+**Solution**:
+
+<Steps>
+  <Step title="Open Terminal">
+    Navigate to Applications → Utilities → Terminal, or press `Cmd + Space` and type "Terminal".
+  </Step>
+
+  <Step title="Run the quarantine removal command">
+    Copy and paste this command, replacing `/path/to/YourApp.app` with the actual path to Creative!:
+    
+    ```bash
+    sudo xattr -r -d com.apple.quarantine /path/to/YourApp.app
+    ```
+    
+    <Info>
+    **Example paths**:
+    - If Creative! is in Applications: `/Applications/Creative.app`
+    - If in Downloads: `/Users/yourusername/Downloads/Creative.app`
+    </Info>
+  </Step>
+
+  <Step title="Enter your password">
+    Terminal will prompt for your administrator password. Type it and press Enter.
+    
+    <Note>
+    Your password won't appear as you type - this is normal security behavior.
+    </Note>
+  </Step>
+
+  <Step title="Launch Creative!">
+    Try opening Creative! again. It should now launch without the quarantine error.
+  </Step>
+</Steps>
+
+**Alternative method (Right-click)**:
+
+1. Right-click (or Control-click) the Creative! app icon
+2. Select "Open" from the menu
+3. Click "Open" in the dialog that appears
+4. macOS will remember this choice for future launches
+
+### App Won't Launch (Windows)
+
+**Problem**: Creative! doesn't start when you double-click it on Windows.
+
+**Solutions**:
+
+<AccordionGroup>
+  <Accordion title="Missing Visual Studio C++ dependencies">
+    Creative! uses Tauri, which requires Visual Studio C++ redistributables.
+    
+    **Fix**:
+    1. Download [Visual Studio C++ Redistributables](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist)
+    2. Install the latest version for your system (x64 for 64-bit Windows)
+    3. Restart your computer
+    4. Try launching Creative! again
+  </Accordion>
+
+  <Accordion title="Windows SmartScreen blocking">
+    Windows may block unrecognized apps.
+    
+    **Fix**:
+    1. When the SmartScreen dialog appears, click "More info"
+    2. Click "Run anyway"
+    3. Creative! should now launch
+  </Accordion>
+
+  <Accordion title="Antivirus interference">
+    Some antivirus software may flag Creative! as suspicious.
+    
+    **Fix**:
+    1. Add Creative! to your antivirus exclusion list
+    2. Check your antivirus quarantine for Creative! files
+    3. Restore any quarantined files and add them to exceptions
+  </Accordion>
+</AccordionGroup>
+
+### App Won't Launch (Linux)
+
+**Problem**: Creative! doesn't start on Linux.
+
+**Solutions**:
+
+<AccordionGroup>
+  <Accordion title="Missing execute permissions">
+    The AppImage or binary may not have execute permissions.
+    
+    **Fix**:
+    ```bash
+    chmod +x /path/to/Creative.AppImage
+    ./Creative.AppImage
+    ```
+  </Accordion>
+
+  <Accordion title="Missing dependencies">
+    Some Linux distributions may be missing required libraries.
+    
+    **Fix** (Ubuntu/Debian):
+    ```bash
+    sudo apt install libwebkit2gtk-4.0-dev libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
+    ```
+    
+    **Fix** (Fedora):
+    ```bash
+    sudo dnf install webkit2gtk3-devel openssl-devel gtk3-devel libappindicator-gtk3-devel librsvg2-devel
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Video Loading Issues
+
+### Video Won't Load
+
+**Problem**: You select a video file, but it doesn't appear in Creative!.
+
+**Solutions**:
+
+<AccordionGroup>
+  <Accordion title="Unsupported video format">
+    Creative! supports MP4, WebM, and MOV formats.
+    
+    **Fix**:
+    - Verify your file extension is `.mp4`, `.webm`, or `.mov`
+    - If using another format (like `.avi`, `.mkv`, `.flv`), convert it first using:
+      - [HandBrake](https://handbrake.fr/) (free, cross-platform)
+      - [FFmpeg](https://ffmpeg.org/) (command-line)
+      - Online converters
+    
+    **Recommended conversion settings**:
+    - Format: MP4
+    - Video codec: H.264
+    - Audio codec: AAC
+  </Accordion>
+
+  <Accordion title="Corrupted video file">
+    The video file may be damaged or incomplete.
+    
+    **Fix**:
+    - Try playing the file in another video player (VLC, mpv)
+    - If it won't play elsewhere, the file is corrupted
+    - Try re-recording or re-downloading the gameplay
+    - Use video repair tools if needed
+  </Accordion>
+
+  <Accordion title="File path contains special characters">
+    Paths with special characters or spaces may cause issues.
+    
+    **Fix**:
+    - Move the video to a simpler path (e.g., Desktop or Documents)
+    - Remove special characters from filename (use only letters, numbers, hyphens, underscores)
+    - Avoid very long file paths (keep under 200 characters)
+  </Accordion>
+
+  <Accordion title="Video file is too large">
+    Extremely large video files may cause loading issues.
+    
+    **Fix**:
+    - Check available system memory (RAM)
+    - Try a shorter or lower resolution clip first
+    - Consider splitting long videos into segments
+    - Close other applications to free up memory
+  </Accordion>
+</AccordionGroup>
+
+### Video Plays But Shows Black Screen
+
+**Problem**: The video loads and controls work, but the video display is black.
+
+**Solutions**:
+
+<AccordionGroup>
+  <Accordion title="Unsupported codec">
+    The video container is supported, but the codec inside isn't.
+    
+    **Fix**:
+    - Re-encode the video with H.264 codec:
+      ```bash
+      ffmpeg -i input.mp4 -c:v libx264 -preset fast -crf 23 -c:a aac output.mp4
+      ```
+    - Or use HandBrake with the "Fast 1080p30" preset
+  </Accordion>
+
+  <Accordion title="Hardware acceleration issues">
+    GPU hardware acceleration may be causing problems.
+    
+    **Fix**:
+    - Update your graphics drivers
+    - Try using a different video codec (see above)
+    - If issue persists, this may require a Creative! update
+  </Accordion>
+</AccordionGroup>
+
+### Playback is Laggy or Stuttering
+
+**Problem**: Video playback is choppy or stutters.
+
+**Solutions**:
+
+1. **Close other applications**: Free up CPU and RAM
+2. **Reduce video quality**: Use a lower resolution version
+3. **Check system resources**: Open Task Manager/Activity Monitor to see if something else is using resources
+4. **Use fast forward/rewind sparingly**: These features are CPU-intensive
+5. **Pause before using analysis tools**: Drawing while playing may cause lag
+
+## Analysis File Issues
+
+### Cannot Load .an File
+
+**Problem**: When you try to open a saved analysis file, it won't load.
+
+**Solutions**:
+
+<AccordionGroup>
+  <Accordion title="File extension not recognized">
+    Make sure the file has `.an` or `.anal` extension.
+    
+    **Fix**:
+    - Rename the file to ensure it ends with `.an`
+    - On Windows, make sure "Hide extensions for known file types" is disabled so you can see the real extension
+  </Accordion>
+
+  <Accordion title="Corrupted archive">
+    The .an file may be damaged.
+    
+    **Fix**:
+    - Try re-exporting from your original analysis session if possible
+    - Check the file size - if it's 0 bytes or much smaller than expected, it's corrupted
+    - Verify the file wasn't corrupted during transfer (compare checksums if available)
+  </Accordion>
+
+  <Accordion title="Insufficient disk space">
+    Creative! needs to extract the archive to a temp directory.
+    
+    **Fix**:
+    - Free up disk space (at least 2x the .an file size)
+    - Clear system temp directories
+    - Check your app data directory for old temp files:
+      - Windows: `%APPDATA%\creative\temp`
+      - macOS: `~/Library/Application Support/creative/temp`
+      - Linux: `~/.local/share/creative/temp`
+  </Accordion>
+
+  <Accordion title="Temp directory permissions">
+    Creative! may not have permission to create temp files.
+    
+    **Fix** (Advanced):
+    - Check permissions on your app data directory
+    - Run Creative! with appropriate permissions (avoid running as admin unless necessary)
+    - On Linux, ensure your user owns the `~/.local/share/creative` directory
+  </Accordion>
+</AccordionGroup>
+
+## Export Issues
+
+### Export Fails or Hangs
+
+**Problem**: When exporting an analysis file, the process fails or gets stuck at "Exporting file...".
+
+**Solutions**:
+
+<AccordionGroup>
+  <Accordion title="Insufficient disk space">
+    You need enough free space for the full video file (plus trim/re-encode if applicable).
+    
+    **Fix**:
+    - Check available disk space on your target drive
+    - Free up space (delete temporary files, old downloads)
+    - Choose a different save location with more space
+    - Trim the video to a shorter segment before exporting
+  </Accordion>
+
+  <Accordion title="FFmpeg trim failure">
+    If you're trimming the video, FFmpeg may encounter errors.
+    
+    **Fix**:
+    - Check the console/logs for FFmpeg error messages
+    - Try exporting without trim (cancel trim mode first)
+    - Ensure the trim points are valid (start < end, within video duration)
+    - If the original video is corrupted, FFmpeg can't process it
+  </Accordion>
+
+  <Accordion title="Save path issues">
+    The destination path may have permission issues or invalid characters.
+    
+    **Fix**:
+    - Save to a simpler location (Desktop, Documents)
+    - Avoid special characters in filename
+    - Ensure you have write permissions to the target folder
+    - Don't save to network drives or cloud-synced folders (save locally first, then move)
+  </Accordion>
+
+  <Accordion title="Large number of voice notes">
+    Many voice notes may slow down export.
+    
+    **Fix**:
+    - Be patient - export with many assets takes longer
+    - Consider removing unnecessary voice notes before exporting
+    - Close other applications to free up resources
+  </Accordion>
+</AccordionGroup>
+
+### Export Succeeds But File Won't Open
+
+**Problem**: Export completes, but the resulting .an file won't load.
+
+**Solutions**:
+
+1. **Check file size**: If it's 0 bytes or suspiciously small, the export failed silently
+2. **Try exporting again**: Sometimes a retry works
+3. **Verify you have breakpoints**: You can't export an analysis without breakpoints
+4. **Test on same computer**: Try loading the .an file on the same computer you exported from
+5. **Check version compatibility**: Ensure both computers have the same version of Creative!
+
+## Analysis Tools Issues
+
+### Can't Create Breakpoints
+
+**Problem**: The "Create Breakpoint" button doesn't appear or doesn't work.
+
+**Solutions**:
+
+<AccordionGroup>
+  <Accordion title="Not in Analysis Mode">
+    Breakpoints can only be created in Analysis Mode.
+    
+    **Fix**:
+    - Click "Analysis Mode" at the top of the screen
+    - Verify the Analysis Menu appears on the right side
+  </Accordion>
+
+  <Accordion title="No video loaded">
+    You need a video loaded before creating breakpoints.
+    
+    **Fix**:
+    - Load a video or .an file first
+    - Ensure the video has finished loading (playback controls are active)
+  </Accordion>
+
+  <Accordion title="Video is not paused">
+    The Create Breakpoint button may only appear when paused.
+    
+    **Fix**:
+    - Click the play/pause button to pause the video
+    - Try clicking on the timeline to pause at a specific time
+  </Accordion>
+</AccordionGroup>
+
+### Drawing Tool Not Working
+
+**Problem**: You can't draw on the video even with the Draw tool selected.
+
+**Solutions**:
+
+1. **Verify Draw mode is active**: The Draw tool in the Analysis Menu should be highlighted
+2. **Check that a breakpoint is selected**: You can only draw on a breakpoint
+3. **Ensure you're in Analysis Mode**: Drawing is disabled in Replay Mode
+4. **Try clicking and dragging**: Drawing requires click-and-drag, not just clicking
+5. **Select a color**: Make sure you've chosen a drawing color (red, green, magenta, yellow)
+
+### Voice Recording Not Working
+
+**Problem**: Voice notes won't record.
+
+**Solutions**:
+
+<AccordionGroup>
+  <Accordion title="Microphone permissions denied">
+    Creative! needs microphone access.
+    
+    **Fix (macOS)**:
+    1. Open System Preferences → Security & Privacy → Privacy
+    2. Select "Microphone" from the list
+    3. Check the box next to Creative!
+    4. Restart Creative!
+    
+    **Fix (Windows)**:
+    1. Open Settings → Privacy → Microphone
+    2. Ensure "Allow apps to access your microphone" is On
+    3. Scroll down and enable it for Creative!
+    
+    **Fix (Linux)**:
+    - Check your desktop environment's permission settings
+    - Ensure your user has access to `/dev/snd/` devices
+  </Accordion>
+
+  <Accordion title="No microphone detected">
+    Your system may not have a working microphone.
+    
+    **Fix**:
+    - Test your microphone in another app (Voice Recorder, Audacity)
+    - Check system sound settings to ensure mic is selected
+    - Plug in an external microphone if using a desktop
+    - Check that the mic isn't muted (hardware mute button)
+  </Accordion>
+
+  <Accordion title="Audio driver issues">
+    Audio drivers may need updating.
+    
+    **Fix**:
+    - Update your audio drivers (Windows)
+    - Restart your audio service
+    - Try a different microphone input if available
+  </Accordion>
+</AccordionGroup>
+
+### Text Notes Disappearing
+
+**Problem**: Text you typed into a text note vanishes.
+
+**Solutions**:
+
+1. **Ensure breakpoint is selected**: Text notes are tied to specific breakpoints
+2. **Don't switch breakpoints while typing**: Save/finish your text note before selecting another breakpoint
+3. **Check if you deleted the breakpoint**: Deleting a breakpoint removes all its annotations
+4. **Verify you're in Analysis Mode**: Text notes may not be editable in Replay Mode
+
+## Performance Issues
+
+### High CPU or Memory Usage
+
+**Problem**: Creative! uses a lot of system resources.
+
+**Solutions**:
+
+1. **Pause video when not watching**: Constant playback uses CPU
+2. **Limit drawing complexity**: Extremely detailed drawings can impact performance
+3. **Close other apps**: Free up system resources
+4. **Use shorter video clips**: Long, high-resolution videos require more memory
+5. **Restart Creative! periodically**: Long sessions may accumulate memory usage
+
+### App Freezes or Crashes
+
+**Problem**: Creative! becomes unresponsive or crashes.
+
+**Solutions**:
+
+<AccordionGroup>
+  <Accordion title="Out of memory">
+    **Symptoms**: Crash when loading large files or during export
+    
+    **Fix**:
+    - Close other applications
+    - Use shorter/lower resolution videos
+    - Restart Creative!
+    - Add more RAM to your system if this is frequent
+  </Accordion>
+
+  <Accordion title="Corrupted app data">
+    **Symptoms**: Crashes on startup or when loading specific files
+    
+    **Fix**:
+    - Clear the temp directory (see paths under "Cannot Load .an File" above)
+    - Reinstall Creative!
+    - Remove app data folder and start fresh (backup analysis files first!)
+  </Accordion>
+
+  <Accordion title="Graphics driver issues">
+    **Symptoms**: Crashes when video plays or when drawing
+    
+    **Fix**:
+    - Update your graphics drivers
+    - Try reducing video resolution
+    - Disable hardware acceleration (if Creative! has that setting in future versions)
+  </Accordion>
+</AccordionGroup>
+
+## Getting More Help
+
+### Viewing Console Logs
+
+For debugging, you can check the application console:
+
+1. **Enable developer tools** (method varies by how Creative! is built):
+   - Right-click anywhere in Creative! and select "Inspect" or "Inspect Element"
+   - Or check if there's a developer menu in the app
+
+2. **Check the Console tab** for error messages
+3. **Copy any error messages** to share with support
+
+### Reporting Issues
+
+If you encounter a bug not covered here:
+
+<Steps>
+  <Step title="Check if the issue is reproducible">
+    Try to reproduce the problem and note the exact steps.
+  </Step>
+
+  <Step title="Gather information">
+    Collect:
+    - Your operating system and version
+    - Creative! version (if displayed in app)
+    - Steps to reproduce
+    - Error messages from console
+    - Screenshots or screen recording of the issue
+  </Step>
+
+  <Step title="Report on GitHub">
+    Visit the Creative! repository (check the README for the link) and create a new issue with all the information you gathered.
+  </Step>
+</Steps>
+
+<Info>
+The more detailed your bug report, the easier it is for developers to fix the issue!
+</Info>
+
+## Best Practices to Avoid Issues
+
+1. **Save frequently**: Export your analysis regularly to avoid losing work
+2. **Use supported formats**: Stick to MP4, WebM, or MOV files
+3. **Keep Creative! updated**: Check for updates regularly
+4. **Organize your files**: Use clear folder structures and filenames
+5. **Test exports**: After exporting, try loading the .an file to verify it works
+6. **Monitor disk space**: Ensure you always have sufficient free space
+7. **Trim aggressively**: Only include the footage you need in your analysis
+
+## Next Steps
+
+- Return to [creating analysis](/guides/creating-analysis) for workflow tips
+- Review [exporting and sharing](/guides/exporting-sharing) best practices
+- Check [keyboard shortcuts](/guides/keyboard-shortcuts) for efficiency tips

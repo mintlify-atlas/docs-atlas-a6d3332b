@@ -1,0 +1,358 @@
+---
+title: Voice Notes
+description: Record audio commentary on video frames using Creative!'s custom Tauri audio recorder plugin
+---
+
+Voice Notes enable you to record audio commentary directly on video frames during analysis. This tool is perfect for detailed explanations, verbal walkthroughs, or capturing thoughts that are easier to speak than type.
+
+## How It Works
+
+Voice notes are powered by a custom Tauri plugin (`tauri-plugin-audio-recorder`) that provides cross-platform audio recording capabilities. Each voice note:
+
+- Records audio from your system's default microphone
+- Stores audio as WAV files on desktop (Windows, macOS, Linux)
+- Uses positioned icons that can be placed anywhere on the video frame
+- Stores audio as Blob objects in memory during the session
+- Embeds audio files in the exported analysis archive
+
+## The Audio Recorder Plugin
+
+Creative! uses a custom-built Tauri plugin for audio recording that provides:
+
+### Desktop Implementation (Rust)
+
+The desktop version uses:
+- **cpal**: Cross-platform audio I/O library for capturing microphone input
+- **hound**: WAV file encoding library for creating uncompressed audio files
+- **Multi-threaded architecture**: Dedicated recording thread to prevent UI blocking
+
+### Key Features
+
+<CardGroup cols={2}>
+  <Card title="Real-time Recording" icon="microphone">
+    Start/stop recording with instant feedback. Duration updates in real-time.
+  </Card>
+  <Card title="Pause & Resume" icon="pause">
+    Pause recording to organize thoughts, then resume without creating separate files.
+  </Card>
+  <Card title="Quality Presets" icon="sliders">
+    Three quality levels: Low (16kHz mono), Medium (44.1kHz mono), High (48kHz stereo).
+  </Card>
+  <Card title="Cross-Platform" icon="desktop">
+    Works on Windows, macOS, and Linux with native audio APIs.
+  </Card>
+</CardGroup>
+
+### Technical Architecture
+
+The plugin uses a command-based threading model (`desktop.rs:16-23`):
+
+```rust
+enum RecorderCommand {
+    Start(RecordingConfig, mpsc::Sender<Result<(), Error>>),
+    Stop(mpsc::Sender<Result<RecordingResult, Error>>),
+    Pause(mpsc::Sender<Result<(), Error>>),
+    Resume(mpsc::Sender<Result<(), Error>>),
+    Shutdown,
+}
+```
+
+This design ensures that non-thread-safe CPAL types (audio streams, devices) remain on a dedicated recording thread while the main UI thread communicates via message passing.
+
+<Note>
+The plugin automatically inherits your hardware's sample rate to prevent macOS from exclusively locking the microphone and muting other applications like Discord.
+</Note>
+
+## Creating Voice Notes
+
+<Steps>
+  <Step title="Activate Voice Mode">
+    Click the **Voice Note** tool in the analysis sidebar. The tool highlights when active.
+  </Step>
+  
+  <Step title="Place the Voice Note">
+    Click anywhere on the video frame to position the voice note icon.
+  </Step>
+  
+  <Step title="Start Recording">
+    Click the **Record** button (red circle) on the voice note interface to begin recording.
+  </Step>
+  
+  <Step title="Speak Your Analysis">
+    Speak naturally into your microphone. The duration counter updates in real-time, and the waveform animates to show active recording.
+  </Step>
+  
+  <Step title="Stop Recording">
+    Click the **Stop** button (square icon) to finish recording. The audio is automatically saved and ready for playback.
+  </Step>
+</Steps>
+
+## Voice Note Controls
+
+Each voice note has a compact interface with three states:
+
+### No Audio Recorded
+- **Record button**: Red circle icon to start recording
+- **Waveform**: Static (not animated)
+- **Duration**: Shows "no audio"
+
+### Recording in Progress
+- **Stop button**: Square icon to finish recording
+- **Waveform**: Animated to indicate active recording
+- **Duration**: Live counter in MM:SS format
+
+### Audio Recorded
+- **Play/Pause button**: Toggle playback of recorded audio
+- **Waveform**: Animated during playback
+- **Duration**: Shows total length (or current position during playback)
+
+<Tip>
+Click the voice icon (the drag handle) to collapse the note to just the icon, reducing visual clutter while preserving the audio.
+</Tip>
+
+## Recording Quality
+
+Creative! uses the **Medium** quality preset by default:
+
+| Setting | Value |
+|---------|-------|
+| Sample Rate | 44.1 kHz |
+| Channels | Mono |
+| Bit Depth | 16-bit |
+| Format | WAV (PCM) |
+
+This provides excellent voice quality while keeping file sizes reasonable.
+
+<Note>
+The actual sample rate may vary based on your hardware configuration. The plugin inherits your system's active sample rate to prevent audio device conflicts.
+</Note>
+
+## Positioning Voice Notes
+
+### Drag and Drop
+
+Click and hold the voice icon to reposition the note. The icon follows your cursor until you release the mouse button.
+
+### Horizontal Flipping
+
+Voice notes automatically flip horizontally when positioned near the right edge (>85% from left). This prevents the audio controls from extending beyond the video container.
+
+```javascript
+const isFlippedX = computed(() => props.x > 85)
+```
+
+When flipped, the note layout reverses (flex-direction: row-reverse) so the icon remains at the anchor point.
+
+### Collapsed State
+
+Collapse voice notes by clicking the icon without dragging. This shows only the voice icon, which:
+- Has a semi-transparent background when collapsed
+- Highlights on hover
+- Can be expanded by clicking again
+
+## Audio Storage and Playback
+
+### During Session
+
+While working in Creative!, voice notes are stored as:
+1. **WAV files** in the system temp directory (`AppData/voice_notes/recording_[timestamp].wav`)
+2. **Blob objects** in memory for playback
+
+The recording process (`VoiceNote.vue:120-154`):
+1. Creates output directory if needed
+2. Starts plugin recording with unique filename
+3. Polls duration updates
+4. Fetches recorded file as Blob on stop
+5. Sets up HTML5 Audio player for playback
+
+<Note>
+On Windows, audio files use the `asset://localhost` protocol. On macOS/Linux, they're served via Creative!'s local HTTP server.
+</Note>
+
+### On Export
+
+When you export your analysis (`exportAnalysis.ts:94-120`):
+
+1. Voice note Blobs are written to temp WAV files
+2. Files are mapped with unique IDs (`voice_[id].wav`)
+3. Audio files are bundled into the analysis ZIP archive
+4. References are stored in the JSON data structure
+
+This ensures all audio is self-contained in the exported file.
+
+## Playback Features
+
+### HTML5 Audio Player
+
+Voice notes use the browser's built-in audio player with:
+- Automatic duration detection via `loadedmetadata` event
+- Real-time position tracking via `timeupdate` event
+- Automatic reset when playback ends
+
+### Playback Controls
+
+**Play**: Click the play icon to start playback
+**Pause**: Click again to pause
+**Duration Display**: Shows current time during playback, total duration when stopped
+
+<Tip>
+You can play multiple voice notes simultaneously to compare analysis from different perspectives.
+</Tip>
+
+## Platform-Specific Details
+
+### macOS
+
+The plugin includes special handling to prevent exclusive microphone locking:
+
+```rust
+// Inherit hardware's active sample rate
+let sample_rate = supported_config.sample_rate().0
+```
+
+This prevents macOS from muting other applications (like Discord or Zoom) while Creative! is recording.
+
+### Windows
+
+Windows uses a different file serving mechanism:
+
+```typescript
+if (type() !== "windows") {
+  fetchUrl = `http://127.0.0.1:${port}/?path=${encodeURIComponent(result.filePath)}`
+} else {
+  fetchUrl = convertFileSrc(result.filePath).replace(
+    "asset://localhost/",
+    "http://asset.localhost/"
+  )
+}
+```
+
+This accommodates WebView2's security restrictions.
+
+### Linux
+
+Linux uses the same HTTP server approach as macOS with CPAL's ALSA or PulseAudio backends.
+
+## Best Practices
+
+### For Clear Recordings
+
+- **Test your microphone**: Record a short test note to verify audio levels
+- **Minimize background noise**: Close windows, mute notifications
+- **Speak clearly**: Aim for conversational pace and volume
+- **Use a good microphone**: Built-in laptop mics work, but external mics are better
+
+### For Organization
+
+- **Keep notes focused**: One topic per voice note
+- **Limit duration**: Shorter notes (30-60 seconds) are easier to navigate
+- **Use timestamps**: Mention the game time you're discussing
+- **Combine with other tools**: Use text notes for labels, voice notes for details
+
+<Warning>
+Voice recordings are not editable. If you make a mistake, delete the note and record again.
+</Warning>
+
+## Troubleshooting
+
+### No audio captured
+
+**Check:**
+- Microphone is connected and enabled
+- Creative! has microphone permissions (macOS/Linux)
+- Microphone is selected as default input device
+- Another application isn't exclusively using the microphone
+
+**Solution**: Test recording in your system's audio settings first.
+
+### Audio playback is silent
+
+**Check:**
+- System volume is not muted
+- Creative! is not muted in system mixer
+- Audio file was successfully recorded (check duration > 0)
+
+**Solution**: Try re-recording the note.
+
+### Recording stops immediately
+
+**Possible causes:**
+- Microphone permission denied
+- Audio device not found
+- Disk space full
+
+**Solution**: Check the console logs (View > Toggle Developer Tools) for error messages.
+
+### Voice note icon disappears
+
+If the icon is not visible:
+- The note may have been positioned off-screen (reload to reset)
+- Video zoom level may be affecting positioning
+
+**Solution**: Disable any zoom and refresh the analysis.
+
+## Plugin API Reference
+
+### Available Commands
+
+The audio recorder plugin exposes these commands:
+
+```typescript
+// Start recording
+await startRecording({
+  outputPath: string,        // Path without extension
+  quality?: "low" | "medium" | "high",
+  maxDuration?: number       // Seconds (0 = unlimited)
+})
+
+// Stop and get result
+const result = await stopRecording()
+// Returns: { filePath, durationMs, fileSize, sampleRate, channels }
+
+// Pause/Resume
+await pauseRecording()
+await resumeRecording()
+
+// Get current status
+const status = await getStatus()
+// Returns: { state, durationMs, outputPath }
+```
+
+### Recording States
+
+- `idle`: Not recording
+- `recording`: Active recording
+- `paused`: Recording paused (can be resumed)
+
+## Performance Considerations
+
+### Memory Usage
+
+Voice notes are stored as Blobs in memory during your session:
+- 1 minute of Medium quality audio ≈ 5 MB
+- 10 voice notes @ 1 min each ≈ 50 MB
+
+This is negligible for modern systems but can add up with many long recordings.
+
+### File Size
+
+WAV files are uncompressed:
+- 1 minute @ 44.1kHz mono 16-bit ≈ 5 MB
+- Export archives with many voice notes can become large
+
+<Tip>
+For analysis files with extensive voice commentary, consider using text notes for simple observations and reserve voice notes for complex explanations that require verbal communication.
+</Tip>
+
+## Future Enhancements
+
+Planned features for voice notes:
+- Audio compression (convert WAV to MP3/AAC on export)
+- Waveform visualization of recorded audio
+- Trim/edit recorded audio
+- Transcription (speech-to-text)
+- Multiple microphone input device selection
+
+<Note>
+The audio recorder plugin is open-source and located in `src-tauri/tauri-plugin-audio-recorder/` if you want to explore or contribute improvements.
+</Note>

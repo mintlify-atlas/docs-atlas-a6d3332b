@@ -1,0 +1,271 @@
+---
+title: 'Annotations'
+description: 'Add drawings, text notes, and voice recordings to analyze gameplay'
+---
+
+Creative! provides three types of annotations you can add to breakpoints: drawings for visual markup, text notes for written analysis, and voice recordings for audio commentary.
+
+## Drawing Annotations
+
+Drawing annotations let you mark up your gameplay footage with freehand strokes.
+
+### Drawing System
+
+The drawing system uses an HTML5 Canvas with vector-based storage:
+
+- **Canvas Rendering**: Drawings are rendered on a transparent canvas overlay that covers the entire video
+- **Vector Storage**: Each stroke is stored as a vector with points, color, line width, and line cap style
+- **Dynamic Resizing**: The canvas automatically resizes when the video container changes size
+- **Hardware Acceleration**: Uses `requestAnimationFrame` for smooth, optimized rendering
+
+<Info>
+  The drawing canvas has `pointer-events: none` to ensure it doesn't interfere with other UI interactions. Drawing is handled by a separate capture layer when draw mode is active.
+</Info>
+
+### How Drawing Works
+
+<Steps>
+  <Step title="Enter Draw Mode">
+    Activate the draw tool from the toolbar. The video playback controls become disabled to prevent accidental navigation while drawing.
+  </Step>
+  
+  <Step title="Draw on the Video">
+    Click and drag on the video to create strokes. Each stroke is captured as a vector with:
+    - Array of `{x, y}` coordinate points
+    - Selected color
+    - Line width setting
+    - Line cap style (round, square, or butt)
+  </Step>
+  
+  <Step title="Automatic Saving">
+    When you release the mouse, the stroke is automatically saved to the current breakpoint's drawing content.
+  </Step>
+</Steps>
+
+### Rendering Pipeline
+
+Drawings are rendered using an optimized pipeline:
+
+1. **Resize Observer**: Monitors container size and updates canvas dimensions
+2. **Schedule Redraw**: Changes trigger a `requestAnimationFrame` call
+3. **Render Vectors**: The `redraw()` utility function renders all saved vectors plus any in-progress stroke
+4. **Collision Detection**: The `checkCollision()` function determines if a point intersects any drawn stroke
+
+```typescript
+// Example vector structure
+type Vector = {
+  line: Point[];           // [{x: 100, y: 200}, {x: 150, y: 220}, ...]
+  color: string;           // "#ff0000"
+  lineWidth: number;       // 3
+  lineCap: "round" | "square" | "butt";
+}
+```
+
+<Tip>
+  The drawing system only redraws when vectors change, using `requestAnimationFrame` to batch updates and prevent redundant renders.
+</Tip>
+
+## Text Annotations
+
+Text notes provide written analysis and commentary on specific moments.
+
+### Text Note Features
+
+- **Resizable**: Drag the resize handles to adjust width and height
+- **Draggable**: Click and drag the text icon to reposition
+- **Auto-flipping**: Text boxes automatically flip direction when near screen edges
+- **Collapsible**: Click the icon to toggle between expanded (showing textarea) and collapsed (icon only)
+- **Persistent Sizing**: Dimensions are stored as percentages for responsive scaling
+
+### Positioning System
+
+Text notes use a sophisticated positioning system:
+
+<AccordionGroup>
+  <Accordion title="Horizontal Positioning">
+    - **Normal**: Positioned from left edge using `left` CSS property
+    - **Flipped**: When `x + width > 98%`, flips to position from right edge
+    - **Max Width**: Constrained by distance to screen edge to prevent overflow
+  </Accordion>
+  
+  <Accordion title="Vertical Positioning">
+    - **Normal**: Positioned from top edge using `top` CSS property
+    - **Flipped**: When `y + height > 98%`, flips to position from bottom edge
+    - **Max Height**: Constrained by distance to screen edge to prevent overflow
+  </Accordion>
+</AccordionGroup>
+
+### Responsive Resizing
+
+The text note component handles two types of resizing:
+
+1. **Manual Resize**: When you drag the textarea resize handle
+   - ResizeObserver monitors the textarea element
+   - Calculates percentage dimensions relative to video container
+   - Includes handle width and gap in calculations
+   - Emits `update:dimensions` with new percentages
+
+2. **Responsive Scaling**: When the video container changes size
+   - Clears inline styles to allow CSS percentage sizing
+   - Automatically scales to maintain relative position
+
+<Note>
+  The component uses a `isManualResizing` flag to distinguish between user-initiated resizing and automatic scaling, ensuring smooth behavior in both cases.
+</Note>
+
+### Text Note Structure
+
+```typescript
+interface TextContent {
+  id: number;
+  type: "text";
+  content: string;              // The actual text content
+  position: ElementPosition;    // {top: number, left: number}
+  dimensions: {                 // Stored as percentages
+    width: number;
+    height: number;
+  };
+  invertedX?: boolean;          // True when flipped horizontally
+  invertedY?: boolean;          // True when flipped vertically
+  isCollapsed?: boolean;        // True when showing only icon
+}
+```
+
+## Voice Annotations
+
+Voice recordings let you add audio commentary to your gameplay analysis.
+
+### Recording Workflow
+
+<Steps>
+  <Step title="Place Voice Note">
+    Activate the voice tool and click on the video to place a voice note icon at that position.
+  </Step>
+  
+  <Step title="Start Recording">
+    Click the record button. The app:
+    - Creates a recordings directory in app data if needed
+    - Generates a unique filename: `recording_{timestamp}`
+    - Starts the audio recorder plugin
+    - Begins a timer to track duration
+  </Step>
+  
+  <Step title="Stop Recording">
+    Click the stop button. The app:
+    - Stops the recorder and gets the file path
+    - Fetches the audio file from disk
+    - Converts it to a Blob for in-memory storage
+    - Updates the voice note with the audio data
+  </Step>
+  
+  <Step title="Playback">
+    Click the play button to listen to your recording. The audio player shows:
+    - Animated waveform visualization
+    - Current time / total duration
+    - Play/pause control
+  </Step>
+</Steps>
+
+### Platform Differences
+
+Voice notes handle audio differently based on the operating system:
+
+**Non-Windows (macOS, Linux)**:
+- Uses localhost video server for audio access
+- Fetches from `http://127.0.0.1:{port}/?path={filePath}`
+
+**Windows**:
+- Uses Tauri's `convertFileSrc` API
+- Accesses via `http://asset.localhost/` protocol
+
+<Info>
+  This platform-specific handling is implemented in VoiceNote.vue:169-177 to work around WebView2 limitations on Windows.
+</Info>
+
+### Voice Note Features
+
+- **Live Recording Timer**: Updates every second during recording
+- **Waveform Animation**: Visual feedback during recording and playback
+- **Duration Display**: Shows `MM:SS` format, updates during playback
+- **Auto-flipping**: Repositions when too close to right edge (`x > 85%`)
+- **Collapsible**: Toggle between expanded (showing controls) and collapsed (icon only)
+
+### Voice Content Structure
+
+```typescript
+interface VoiceContent {
+  id: number;
+  type: "voice";
+  filename?: string;            // "voice_2.wav" (set during export)
+  fileBlob?: Blob;              // In-memory audio data (removed during export)
+  duration: number;             // Total length in seconds
+  position: ElementPosition;
+  dimensions: {
+    width: number;
+    height: number;
+  };
+  isCollapsed?: boolean;
+}
+```
+
+### Export Handling
+
+When exporting an analysis file, voice annotations undergo special processing:
+
+1. **Write to Temp Files**: Blobs are written to physical WAV files in the temp directory
+2. **Generate Filenames**: Each voice note gets a unique `voice_{id}.wav` filename
+3. **Map File Paths**: A `HashMap<String, String>` maps filenames to absolute paths
+4. **Remove Blobs**: The `fileBlob` property is deleted from the JSON to prevent serialization errors
+5. **Rust Packaging**: The Rust backend streams audio files into the ZIP's `audio/` directory
+
+<Accordion title="Example: Voice Note Export">
+```typescript
+// During export (exportAnalysis.ts:99-120)
+const audioPaths: Record<string, string> = {};
+
+for (const bp of clonedBreakpoints) {
+  if (bp.voiceContent) {
+    for (const vc of bp.voiceContent) {
+      if (vc.fileBlob) {
+        const filename = `voice_${vc.id}.wav`;
+        vc.filename = filename;
+        
+        // Write blob to temp file
+        const tempWavePath = await join(systemTempDir, filename);
+        const audioData = await vc.fileBlob.arrayBuffer();
+        const audioFile = await create(tempWavePath);
+        await audioFile.write(new Uint8Array(audioData));
+        await audioFile.close();
+        
+        audioPaths[filename] = tempWavePath;
+        delete vc.fileBlob;  // Clean up for JSON serialization
+      }
+    }
+  }
+}
+```
+</Accordion>
+
+## Common Annotation Patterns
+
+<CardGroup cols={2}>
+  <Card title="Visual + Written" icon="pen">
+    Draw to highlight an area, then add a text note explaining what to notice. This combines visual and written analysis.
+  </Card>
+  
+  <Card title="Audio Commentary" icon="microphone">
+    Use voice notes for longer explanations that would be tedious to type, or when you want to capture tone and emphasis.
+  </Card>
+  
+  <Card title="Progressive Detail" icon="layer-group">
+    Start with a quick drawing to mark the moment, then add text notes for specific points, and finally record voice for full context.
+  </Card>
+  
+  <Card title="Multi-Point Analysis" icon="list">
+    Add multiple text notes to the same breakpoint to break down complex plays into numbered points or steps.
+  </Card>
+</CardGroup>
+
+<Tip>
+  All annotation types can be collapsed to just their icons. This is useful when you want to keep annotations in place but temporarily hide them to see the video clearly.
+</Tip>

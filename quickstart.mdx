@@ -1,80 +1,173 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quickstart
+description: Analyze your first gameplay video in minutes with Creative!
 ---
 
-## Get started in three steps
+# Analyze your first gameplay video
 
-Get your documentation site running locally and make your first customization.
+Get up and running with Creative! by creating your first gameplay analysis in just a few minutes.
 
-### Step 1: Set up your local environment
+<Steps>
+  <Step title="Launch Creative!">
+    Open the Creative! application on your computer. Make sure you have it installed — if not, check out the [installation guide](/installation) first.
+    
+    You'll see the main interface with a placeholder screen and disabled controls until you load a video.
+  </Step>
+
+  <Step title="Load a gameplay video">
+    You can load a video in two ways:
+    
+    **Load a new video file:**
+    - Click **Select Video** or drag and drop a video file
+    - Supported formats: MP4, WebM, MOV
+    - The video will appear in the playback area
+    
+    **Load an existing analysis:**
+    - Click **Load Analysis File**
+    - Select an `.an` file you previously exported
+    - Your video, breakpoints, and all annotations will be restored
+    
+    <Info>Creative! supports large video files efficiently using streaming playback.</Info>
+  </Step>
+
+  <Step title="Switch to Analysis Mode">
+    At the top of the window, you'll see two mode buttons:
+    
+    - **Replay Mode**: Simple video playback without editing tools
+    - **Analysis Mode**: Full annotation and breakpoint creation tools
+    
+    Click **Analysis Mode** to enable the analysis tools. The interface will expand to show the analysis menu on the right side.
+  </Step>
+
+  <Step title="Create your first breakpoint">
+    Navigate to the moment in your video you want to analyze:
+    
+    1. Use the timeline to scrub to a specific time, or click anywhere on the timeline to jump
+    2. Click the **+** button in the analysis menu to create a breakpoint at the current timestamp
+    3. Your breakpoint appears on the timeline as a marker
+    
+    <Tip>Breakpoints are automatically created at the current playback position.</Tip>
+  </Step>
+
+  <Step title="Add annotations">
+    With a breakpoint selected, choose an annotation tool:
+    
+    **Drawing tool:**
+    - Click the **Draw** icon
+    - Select a color (red, green, magenta, or yellow)
+    - Draw directly on the video frame to highlight important areas
+    
+    **Text notes:**
+    - Click the **Text** icon
+    - Type your analysis and observations
+    - Notes are draggable and resizable on the canvas
+    
+    **Voice notes:**
+    - Click the **Voice** icon
+    - Record audio commentary explaining your analysis
+    - Playback your recordings directly in the app
+    
+    <CardGroup cols={3}>
+      <Card title="Drawing" icon="pen">
+        Highlight areas with colored annotations
+      </Card>
+      <Card title="Text" icon="note">
+        Add written explanations
+      </Card>
+      <Card title="Voice" icon="microphone">
+        Record audio commentary
+      </Card>
+    </CardGroup>
+  </Step>
+
+  <Step title="Create more breakpoints">
+    Repeat the process to add more analysis points throughout your video:
+    
+    1. Scrub to a new position
+    2. Click **+** to create another breakpoint
+    3. Add drawings, text, or voice notes
+    
+    You can navigate between breakpoints using the timeline markers or the Previous/Next buttons.
+  </Step>
+
+  <Step title="Trim your video (optional)">
+    If you want to focus on a specific segment:
+    
+    1. Click the **Trim** button in the analysis menu
+    2. Drag the trim handles on the timeline to set start and end points
+    3. Click **Confirm Trim** when ready
+    
+    <Note>Trimming doesn't modify your original video file. The trim is only applied when you export the analysis.</Note>
+  </Step>
+
+  <Step title="Export your analysis">
+    Save your work as an analysis file:
+    
+    1. Click **Export Analysis File** in the analysis menu
+    2. Choose a location and filename
+    3. The app creates an `.an` file containing:
+       - Your video (trimmed if applicable)
+       - All breakpoints with timestamps
+       - Drawings, text notes, and voice recordings
+    
+    <Info>Analysis files are ZIP archives that bundle everything together for easy sharing.</Info>
+  </Step>
+
+  <Step title="Share or continue editing">
+    Now you can:
+    
+    - Share your `.an` file with teammates, coaches, or friends
+    - Load it later to continue editing
+    - Create multiple versions with different analyses
+    
+    Recipients can open your `.an` file in Creative! to see your complete analysis with all annotations intact.
+  </Step>
+</Steps>
+
+## Tips for effective analysis
 
 <AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
+  <Accordion title="Use descriptive breakpoints">
+    Create breakpoints at key moments: successful plays, mistakes, decision points, or interesting strategies. This makes it easier to navigate your analysis later.
   </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
+  
+  <Accordion title="Combine annotation types">
+    Use drawings to highlight visual elements, text notes for detailed explanations, and voice notes for longer commentary. Each tool serves a different purpose.
+  </Accordion>
+  
+  <Accordion title="Export frequently">
+    Save your work periodically by exporting analysis files. This creates backups and lets you share work-in-progress with others.
+  </Accordion>
+  
+  <Accordion title="Organize your files">
+    Use descriptive filenames like `valorant-clutch-round-analysis.an` or `cs-smoke-lineup-guide.an` to keep your analyses organized.
   </Accordion>
 </AccordionGroup>
 
-### Step 2: Deploy your changes
+## Understanding the modes
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+Creative! has two distinct modes:
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+| Mode | Purpose | Tools Available |
+|------|---------|-----------------|
+| **Replay Mode** | Simple video playback and viewing | Timeline navigation, playback controls |
+| **Analysis Mode** | Full editing and annotation | All replay tools + breakpoints, drawing, text, voice, trim |
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 3: Go live
-
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+Switch between modes anytime using the mode buttons at the top of the window. Your breakpoints and annotations are preserved when switching modes.
 
 ## Next steps
 
-Now that you have your docs running, explore these key features:
-
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="Video playback" icon="play" href="/features/video-playback">
+    Master the timeline and playback controls
+  </Card>
+  <Card title="Breakpoints" icon="bookmark" href="/features/breakpoints">
+    Learn advanced breakpoint management
+  </Card>
+  <Card title="Annotations" icon="pen" href="/features/annotations">
+    Explore all annotation capabilities
+  </Card>
+  <Card title="Export & share" icon="share" href="/guides/exporting-sharing">
+    Learn about file formats and sharing
+  </Card>
 </CardGroup>
-
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>

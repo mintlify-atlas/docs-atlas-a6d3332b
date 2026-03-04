@@ -1,0 +1,949 @@
+---
+title: Audio Recorder Plugin
+description: Custom Tauri plugin for cross-platform audio recording with cpal and hound
+---
+
+## Overview
+
+The `tauri-plugin-audio-recorder` is a custom-built Tauri plugin that provides cross-platform audio recording capabilities using:
+- **cpal**: Cross-platform audio library for device enumeration and stream capture
+- **hound**: WAV file writer for lossless audio output
+- **Multi-threading**: Dedicated recording thread to avoid blocking the main application
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Frontend (TypeScript)                    │
+│  import { start, stop } from 'tauri-plugin-audio-recorder'  │
+└────────────────────────┬────────────────────────────────────┘
+                         │ invoke()
+┌────────────────────────▼────────────────────────────────────┐
+│                  Plugin Commands (commands.rs)              │
+│  - start_recording     - get_status                         │
+│  - stop_recording      - get_devices                        │
+│  - pause_recording     - check_permission                   │
+│  - resume_recording    - request_permission                 │
+└────────────────────────┬────────────────────────────────────┘
+                         │
+┌────────────────────────▼────────────────────────────────────┐
+│              AudioRecorder Struct (desktop.rs)              │
+│  ┌──────────────────────────────────────────────────┐      │
+│  │ SharedState (Arc)                                │      │
+│  │  - is_recording: AtomicBool                      │      │
+│  │  - is_paused: AtomicBool                         │      │
+│  │  - duration_ms: AtomicU64                        │      │
+│  │  - output_path: Mutex<Option<String>>            │      │
+│  └──────────────────────────────────────────────────┘      │
+│  ┌──────────────────────────────────────────────────┐      │
+│  │ Command Channel (mpsc::Sender)                   │      │
+│  │  → RecorderCommand::Start                        │      │
+│  │  → RecorderCommand::Stop                         │      │
+│  │  → RecorderCommand::Pause                        │      │
+│  │  → RecorderCommand::Resume                       │      │
+│  └──────────────────────────────────────────────────┘      │
+└────────────────────────┬────────────────────────────────────┘
+                         │
+┌────────────────────────▼────────────────────────────────────┐
+│              Recording Thread (desktop.rs)                  │
+│  ┌──────────────────────────────────────────────────┐      │
+│  │ cpal::Stream (audio input stream)                │      │
+│  │  - Captures audio samples from microphone        │      │
+│  │  - Converts to i16 format                        │      │
+│  │  - Writes to WAV file via hound::WavWriter       │      │
+│  └──────────────────────────────────────────────────┘      │
+│  ┌──────────────────────────────────────────────────┐      │
+│  │ hound::WavWriter (file writer)                   │      │
+│  │  - Writes 16-bit PCM WAV format                  │      │
+│  │  - Buffered I/O via BufWriter                    │      │
+│  └──────────────────────────────────────────────────┘      │
+└─────────────────────────────────────────────────────────────┘
+                         │
+                         ▼
+                  ┌──────────────┐
+                  │  Output WAV  │
+                  │  File on Disk│
+                  └──────────────┘
+```
+
+## Plugin Structure
+
+```
+tauri-plugin-audio-recorder/
+├── src/
+│   ├── lib.rs           # Plugin initialization and trait definitions
+│   ├── commands.rs      # Tauri command wrappers
+│   ├── desktop.rs       # Desktop implementation (cpal + hound)
+│   ├── mobile.rs        # Mobile stub (not implemented)
+│   ├── models.rs        # Data types and enums
+│   ├── error.rs         # Error handling
+│   └── paths.rs         # Path utilities
+├── Cargo.toml
+└── README.md
+```
+
+## Plugin Initialization (lib.rs)
+
+### Plugin Builder
+
+```rust
+use tauri::{
+    plugin::{Builder, TauriPlugin},
+    Manager, Runtime,
+};
+
+pub fn init<R: Runtime>() -> TauriPlugin<R> {
+    Builder::new("audio-recorder")
+        .invoke_handler(tauri::generate_handler![
+            commands::start_recording,
+            commands::stop_recording,
+            commands::pause_recording,
+            commands::resume_recording,
+            commands::get_status,
+            commands::get_devices,
+            commands::check_permission,
+            commands::request_permission,
+        ])
+        .setup(|app, api| {
+            #[cfg(mobile)]
+            let audio_recorder = mobile::init(app, api)?;
+            #[cfg(desktop)]
+            let audio_recorder = desktop::init(app, api)?;
+            app.manage(audio_recorder);
+            Ok(())
+        })
+        .build()
+}
+```
+
+**Reference:** `src-tauri/tauri-plugin-audio-recorder/src/lib.rs:38-59`
+
+### Extension Trait
+
+Provides convenient access to the plugin from any `AppHandle` or `Window`:
+
+```rust
+pub trait AudioRecorderExt<R: Runtime> {
+    fn audio_recorder(&self) -> &AudioRecorder<R>;
+}
+
+impl<R: Runtime, T: Manager<R>> AudioRecorderExt<R> for T {
+    fn audio_recorder(&self) -> &AudioRecorder<R> {
+        self.state::<AudioRecorder<R>>().inner()
+    }
+}
+```
+
+**Reference:** `src-tauri/tauri-plugin-audio-recorder/src/lib.rs:27-35`
+
+## Commands (commands.rs)
+
+All commands are async wrappers that delegate to the `AudioRecorder` implementation.
+
+<CodeGroup>
+```rust start_recording
+#[command]
+pub(crate) async fn start_recording<R: Runtime>(
+    app: AppHandle<R>,
+    config: RecordingConfig,
+) -> Result<()> {
+    app.audio_recorder().start_recording(config)
+}
+```
+
+```rust stop_recording
+#[command]
+pub(crate) async fn stop_recording<R: Runtime>(
+    app: AppHandle<R>
+) -> Result<RecordingResult> {
+    app.audio_recorder().stop_recording()
+}
+```
+
+```rust pause_recording
+#[command]
+pub(crate) async fn pause_recording<R: Runtime>(
+    app: AppHandle<R>
+) -> Result<()> {
+    app.audio_recorder().pause_recording()
+}
+```
+
+```rust resume_recording
+#[command]
+pub(crate) async fn resume_recording<R: Runtime>(
+    app: AppHandle<R>
+) -> Result<()> {
+    app.audio_recorder().resume_recording()
+}
+```
+
+```rust get_status
+#[command]
+pub(crate) async fn get_status<R: Runtime>(
+    app: AppHandle<R>
+) -> Result<RecordingStatus> {
+    app.audio_recorder().get_status()
+}
+```
+
+```rust get_devices
+#[command]
+pub(crate) async fn get_devices<R: Runtime>(
+    app: AppHandle<R>
+) -> Result<AudioDevicesResponse> {
+    app.audio_recorder().get_devices()
+}
+```
+</CodeGroup>
+
+**Reference:** `src-tauri/tauri-plugin-audio-recorder/src/commands.rs`
+
+## Data Models (models.rs)
+
+### RecordingConfig
+
+```rust
+#[derive(Serialize, Deserialize, Clone)]
+pub struct RecordingConfig {
+    pub output_path: String,  // File path (without .wav extension)
+    pub quality: AudioQuality,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy)]
+pub enum AudioQuality {
+    Low,      // 22050 Hz, mono
+    Medium,   // 44100 Hz, mono
+    High,     // 48000 Hz, stereo
+}
+
+impl AudioQuality {
+    pub fn sample_rate(&self) -> u32 {
+        match self {
+            AudioQuality::Low => 22050,
+            AudioQuality::Medium => 44100,
+            AudioQuality::High => 48000,
+        }
+    }
+    
+    pub fn channels(&self) -> u16 {
+        match self {
+            AudioQuality::Low | AudioQuality::Medium => 1,
+            AudioQuality::High => 2,
+        }
+    }
+}
+```
+
+### RecordingResult
+
+```rust
+#[derive(Serialize, Deserialize, Clone)]
+pub struct RecordingResult {
+    pub file_path: String,
+    pub duration_ms: u64,
+    pub file_size: u64,
+    pub sample_rate: u32,
+    pub channels: u16,
+}
+```
+
+### RecordingStatus
+
+```rust
+#[derive(Serialize, Deserialize, Clone)]
+pub struct RecordingStatus {
+    pub state: RecordingState,
+    pub duration_ms: u64,
+    pub output_path: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq)]
+pub enum RecordingState {
+    Idle,
+    Recording,
+    Paused,
+}
+```
+
+### AudioDevice
+
+```rust
+#[derive(Serialize, Deserialize, Clone)]
+pub struct AudioDevice {
+    pub id: String,
+    pub name: String,
+    pub is_default: bool,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct AudioDevicesResponse {
+    pub devices: Vec<AudioDevice>,
+}
+```
+
+## Desktop Implementation (desktop.rs)
+
+### Multi-Threading Architecture
+
+<Info>
+  cpal's `Stream` and `WavWriter` are **not Send**, so they cannot be shared across threads. The plugin uses a dedicated recording thread that owns these types, communicating via message passing.
+</Info>
+
+#### Shared State
+
+```rust
+struct SharedState {
+    is_recording: AtomicBool,
+    is_paused: AtomicBool,
+    duration_ms: AtomicU64,
+    output_path: Mutex<Option<String>>,
+    sample_rate: AtomicU64,
+    channels: AtomicU64,
+}
+```
+
+This state is wrapped in `Arc` and shared between the main thread and recording thread.
+
+**Reference:** `src-tauri/tauri-plugin-audio-recorder/src/desktop.rs:26-46`
+
+#### Command Channel
+
+```rust
+enum RecorderCommand {
+    Start(RecordingConfig, mpsc::Sender<Result<(), Error>>),
+    Stop(mpsc::Sender<Result<RecordingResult, Error>>),
+    Pause(mpsc::Sender<Result<(), Error>>),
+    Resume(mpsc::Sender<Result<(), Error>>),
+    Shutdown,
+}
+```
+
+Commands are sent from the main thread to the recording thread via `mpsc::channel`.
+
+**Reference:** `src-tauri/tauri-plugin-audio-recorder/src/desktop.rs:17-23`
+
+### Initialization
+
+```rust
+pub fn init<R: Runtime, C: DeserializeOwned>(
+    app: &AppHandle<R>,
+    _api: PluginApi<R, C>,
+) -> crate::Result<AudioRecorder<R>> {
+    let shared = Arc::new(SharedState::default());
+    let (cmd_tx, cmd_rx) = mpsc::channel::<RecorderCommand>();
+    
+    // Spawn the recording thread
+    let shared_clone = Arc::clone(&shared);
+    let handle = thread::spawn(move || {
+        recording_thread(cmd_rx, shared_clone);
+    });
+    
+    Ok(AudioRecorder {
+        app: app.clone(),
+        shared,
+        cmd_tx,
+        _thread_handle: Mutex::new(Some(handle)),
+    })
+}
+```
+
+**Reference:** `src-tauri/tauri-plugin-audio-recorder/src/desktop.rs:48-67`
+
+### Recording Thread
+
+```rust
+fn recording_thread(rx: mpsc::Receiver<RecorderCommand>, shared: Arc<SharedState>) {
+    let mut current_stream: Option<cpal::Stream> = None;
+    let mut current_writer: Option<Arc<Mutex<Option<WavWriter<BufWriter<File>>>>>> = None;
+    let mut write_flag: Option<Arc<AtomicBool>> = None;
+    
+    loop {
+        match rx.recv() {
+            Ok(RecorderCommand::Start(config, reply)) => {
+                let result = start_recording_internal(&config, &shared);
+                match result {
+                    Ok((stream, writer, flag)) => {
+                        current_stream = Some(stream);
+                        current_writer = Some(writer);
+                        write_flag = Some(flag);
+                        let _ = reply.send(Ok(()));
+                    }
+                    Err(e) => {
+                        let _ = reply.send(Err(e));
+                    }
+                }
+            }
+            Ok(RecorderCommand::Stop(reply)) => {
+                let result = stop_recording_internal(
+                    &shared,
+                    &mut current_stream,
+                    &mut current_writer
+                );
+                write_flag = None;
+                let _ = reply.send(result);
+            }
+            Ok(RecorderCommand::Pause(reply)) => {
+                if let Some(ref flag) = write_flag {
+                    flag.store(false, Ordering::SeqCst);
+                    shared.is_paused.store(true, Ordering::SeqCst);
+                    let _ = reply.send(Ok(()));
+                } else {
+                    let _ = reply.send(Err(Error::NotRecording));
+                }
+            }
+            Ok(RecorderCommand::Resume(reply)) => {
+                if let Some(ref flag) = write_flag {
+                    flag.store(true, Ordering::SeqCst);
+                    shared.is_paused.store(false, Ordering::SeqCst);
+                    let _ = reply.send(Ok(()));
+                } else {
+                    let _ = reply.send(Err(Error::NotRecording));
+                }
+            }
+            Ok(RecorderCommand::Shutdown) | Err(_) => {
+                // Clean up and exit
+                if let Some(stream) = current_stream.take() {
+                    drop(stream);
+                }
+                if let Some(writer) = current_writer.take() {
+                    if let Ok(mut guard) = writer.lock() {
+                        if let Some(w) = guard.take() {
+                            let _ = w.finalize();
+                        }
+                    }
+                }
+                break;
+            }
+        }
+    }
+}
+```
+
+**Reference:** `src-tauri/tauri-plugin-audio-recorder/src/desktop.rs:70-131`
+
+### Starting a Recording
+
+<Steps>
+  <Step title="Get audio device and config">
+    ```rust
+    let host = cpal::default_host();
+    let device = host.default_input_device()
+        .ok_or(Error::DeviceNotFound)?;
+    
+    let supported_config = device.default_input_config()
+        .map_err(|e| Error::Recording(format!("Failed to get device config: {}", e)))?;
+    ```
+  </Step>
+  <Step title="Inherit hardware sample rate (macOS fix)">
+    <Warning>
+      **Critical for macOS**: Forcing a specific sample rate can cause the OS to exclusively lock the microphone, muting other apps like Discord. Instead, inherit the hardware's active sample rate.
+    </Warning>
+    
+    ```rust
+    // DON'T: Force our requested rate
+    // let sample_rate = config.quality.sample_rate();
+    
+    // DO: Use hardware's current rate
+    let sample_rate = supported_config.sample_rate().0;
+    let channels = supported_config.channels();
+    
+    log::info!(
+        "Inherited hardware config to prevent macOS exclusivity bugs: {}Hz, {} channels",
+        sample_rate,
+        channels
+    );
+    ```
+    **Reference:** `src-tauri/tauri-plugin-audio-recorder/src/desktop.rs:156-171`
+  </Step>
+  <Step title="Create output file path">
+    ```rust
+    let file_path = if config.output_path.is_empty() {
+        // Generate unique filename in temp directory
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let temp_dir = std::env::temp_dir();
+        let filename = format!("recording-{}.wav", timestamp);
+        temp_dir.join(filename).to_string_lossy().to_string()
+    } else if !config.output_path.contains('/') && !config.output_path.contains('\\') {
+        // Just a filename, use temp directory
+        let temp_dir = std::env::temp_dir();
+        let filename = format!("{}.wav", config.output_path);
+        temp_dir.join(filename).to_string_lossy().to_string()
+    } else {
+        // Full path provided
+        format!("{}.wav", config.output_path)
+    };
+    ```
+    **Reference:** `src-tauri/tauri-plugin-audio-recorder/src/desktop.rs:182-199`
+  </Step>
+  <Step title="Create WAV writer">
+    ```rust
+    let spec = WavSpec {
+        channels,
+        sample_rate,
+        bits_per_sample: 16,
+        sample_format: hound::SampleFormat::Int,
+    };
+    
+    let writer = WavWriter::create(&path, spec)
+        .map_err(|e| Error::Recording(format!("Failed to create WAV file: {}", e)))?;
+    let writer = Arc::new(Mutex::new(Some(writer)));
+    let writer_clone = Arc::clone(&writer);
+    ```
+  </Step>
+  <Step title="Build audio stream with callback">
+    The stream callback is invoked by cpal for each audio buffer. It handles sample conversion and writes to the WAV file:
+    
+    <Tabs>
+      <Tab title="F32 Samples">
+        ```rust
+        let stream = device.build_input_stream(
+            &cpal_config,
+            move |data: &[f32], _: &cpal::InputCallbackInfo| {
+                if !write_enabled_clone.load(Ordering::Relaxed) {
+                    return;  // Paused
+                }
+                if let Ok(mut guard) = writer_clone.lock() {
+                    if let Some(ref mut w) = *guard {
+                        for &sample in data {
+                            // Convert f32 to i16
+                            let sample_i16 = (sample * 32767.0) as i16;
+                            let _ = w.write_sample(sample_i16);
+                        }
+                    }
+                }
+                // Update duration
+                let elapsed = start_time.elapsed().as_millis() as u64;
+                shared_clone.duration_ms.store(elapsed, Ordering::Relaxed);
+            },
+            err_fn,
+            None,
+        )
+        ```
+        **Reference:** `src-tauri/tauri-plugin-audio-recorder/src/desktop.rs:229-248`
+      </Tab>
+      <Tab title="I16 Samples">
+        ```rust
+        let stream = device.build_input_stream(
+            &cpal_config,
+            move |data: &[i16], _: &cpal::InputCallbackInfo| {
+                if !write_enabled_clone.load(Ordering::Relaxed) {
+                    return;
+                }
+                if let Ok(mut guard) = writer_clone.lock() {
+                    if let Some(ref mut w) = *guard {
+                        for &sample in data {
+                            let _ = w.write_sample(sample);
+                        }
+                    }
+                }
+                let elapsed = start_time.elapsed().as_millis() as u64;
+                shared_clone.duration_ms.store(elapsed, Ordering::Relaxed);
+            },
+            err_fn,
+            None,
+        )
+        ```
+        **Reference:** `src-tauri/tauri-plugin-audio-recorder/src/desktop.rs:249-272`
+      </Tab>
+      <Tab title="U16 Samples">
+        ```rust
+        let stream = device.build_input_stream(
+            &cpal_config,
+            move |data: &[u16], _: &cpal::InputCallbackInfo| {
+                if !write_enabled_clone.load(Ordering::Relaxed) {
+                    return;
+                }
+                if let Ok(mut guard) = writer_clone.lock() {
+                    if let Some(ref mut w) = *guard {
+                        for &sample in data {
+                            // Convert u16 to i16
+                            let sample_i16 = (sample as i32 - 32768) as i16;
+                            let _ = w.write_sample(sample_i16);
+                        }
+                    }
+                }
+                let elapsed = start_time.elapsed().as_millis() as u64;
+                shared_clone.duration_ms.store(elapsed, Ordering::Relaxed);
+            },
+            err_fn,
+            None,
+        )
+        ```
+        **Reference:** `src-tauri/tauri-plugin-audio-recorder/src/desktop.rs:273-297`
+      </Tab>
+    </Tabs>
+  </Step>
+  <Step title="Start the stream">
+    ```rust
+    stream.play()
+        .map_err(|e| Error::Recording(format!("Failed to start audio stream: {}", e)))?;
+    
+    // Update shared state
+    shared.is_recording.store(true, Ordering::SeqCst);
+    shared.is_paused.store(false, Ordering::SeqCst);
+    shared.duration_ms.store(0, Ordering::SeqCst);
+    shared.sample_rate.store(sample_rate as u64, Ordering::SeqCst);
+    shared.channels.store(channels as u64, Ordering::SeqCst);
+    *shared.output_path.lock().unwrap() = Some(file_path);
+    
+    log::info!("Recording started: {}Hz, {} channels", sample_rate, channels);
+    
+    Ok((stream, writer, write_enabled))
+    ```
+    **Reference:** `src-tauri/tauri-plugin-audio-recorder/src/desktop.rs:302-322`
+  </Step>
+</Steps>
+
+### Stopping a Recording
+
+<Steps>
+  <Step title="Drop the stream">
+    ```rust
+    if let Some(s) = stream.take() {
+        drop(s);  // Stops audio capture
+    }
+    ```
+  </Step>
+  <Step title="Finalize WAV file">
+    ```rust
+    if let Some(w) = writer.take() {
+        if let Ok(mut guard) = w.lock() {
+            if let Some(wav_writer) = guard.take() {
+                wav_writer.finalize()
+                    .map_err(|e| Error::Recording(format!("Failed to finalize WAV: {}", e)))?;
+            }
+        }
+    }
+    ```
+    
+    <Note>
+      `finalize()` writes the WAV header with the correct file size and closes the file.
+    </Note>
+  </Step>
+  <Step title="Gather metadata">
+    ```rust
+    let duration_ms = shared.duration_ms.load(Ordering::SeqCst);
+    let sample_rate = shared.sample_rate.load(Ordering::SeqCst) as u32;
+    let channels = shared.channels.load(Ordering::SeqCst) as u16;
+    let output_path = shared.output_path.lock().unwrap().clone().unwrap_or_default();
+    
+    let file_size = std::fs::metadata(&output_path)
+        .map(|m| m.len())
+        .unwrap_or(0);
+    ```
+  </Step>
+  <Step title="Reset state and return result">
+    ```rust
+    shared.is_recording.store(false, Ordering::SeqCst);
+    shared.is_paused.store(false, Ordering::SeqCst);
+    shared.duration_ms.store(0, Ordering::SeqCst);
+    
+    log::info!("Recording stopped: {} ({}ms)", output_path, duration_ms);
+    
+    Ok(RecordingResult {
+        file_path: output_path,
+        duration_ms,
+        file_size,
+        sample_rate,
+        channels,
+    })
+    ```
+    **Reference:** `src-tauri/tauri-plugin-audio-recorder/src/desktop.rs:325-379`
+  </Step>
+</Steps>
+
+### Pause/Resume
+
+Pause and resume are implemented via an `AtomicBool` flag that the stream callback checks:
+
+```rust
+// Pause
+if let Some(ref flag) = write_flag {
+    flag.store(false, Ordering::SeqCst);
+    shared.is_paused.store(true, Ordering::SeqCst);
+}
+
+// Resume
+if let Some(ref flag) = write_flag {
+    flag.store(true, Ordering::SeqCst);
+    shared.is_paused.store(false, Ordering::SeqCst);
+}
+```
+
+The stream continues capturing audio, but samples are discarded when `write_flag` is `false`.
+
+**Reference:** `src-tauri/tauri-plugin-audio-recorder/src/desktop.rs:97-114`
+
+### Device Enumeration
+
+```rust
+pub fn get_devices(&self) -> crate::Result<AudioDevicesResponse> {
+    let host = cpal::default_host();
+    let default_device = host.default_input_device();
+    let default_name = default_device.as_ref().and_then(|d| d.name().ok());
+    
+    let devices = host.input_devices()
+        .map_err(|e| Error::Recording(format!("Failed to enumerate devices: {}", e)))?;
+    
+    let mut result = Vec::new();
+    for device in devices {
+        if let Ok(name) = device.name() {
+            let is_default = default_name.as_ref().map(|n| n == &name).unwrap_or(false);
+            result.push(AudioDevice {
+                id: name.clone(),
+                name,
+                is_default,
+            });
+        }
+    }
+    
+    Ok(AudioDevicesResponse { devices: result })
+}
+```
+
+**Reference:** `src-tauri/tauri-plugin-audio-recorder/src/desktop.rs:462-484`
+
+### Permissions (Desktop)
+
+On desktop platforms, microphone access is granted at the OS level (not runtime):
+
+```rust
+pub fn check_permission(&self) -> crate::Result<PermissionStatus> {
+    Ok(PermissionStatus {
+        granted: true,
+        can_request: false,
+    })
+}
+
+pub fn request_permission(&self) -> crate::Result<PermissionStatus> {
+    Ok(PermissionStatus {
+        granted: true,
+        can_request: false,
+    })
+}
+```
+
+**Reference:** `src-tauri/tauri-plugin-audio-recorder/src/desktop.rs:486-503`
+
+<Note>
+  On macOS, the first time the app accesses the microphone, the OS will automatically prompt the user for permission. Subsequent runs will use the saved preference.
+</Note>
+
+## Frontend Usage
+
+### TypeScript API
+
+```typescript
+import { invoke } from '@tauri-apps/api/core'
+
+interface RecordingConfig {
+  output_path: string
+  quality: 'Low' | 'Medium' | 'High'
+}
+
+interface RecordingResult {
+  file_path: string
+  duration_ms: number
+  file_size: number
+  sample_rate: number
+  channels: number
+}
+
+interface RecordingStatus {
+  state: 'Idle' | 'Recording' | 'Paused'
+  duration_ms: number
+  output_path: string | null
+}
+
+// Start recording
+await invoke('plugin:audio-recorder|start_recording', {
+  config: {
+    output_path: '/path/to/output',  // without .wav extension
+    quality: 'Medium'
+  }
+})
+
+// Stop and get result
+const result = await invoke<RecordingResult>('plugin:audio-recorder|stop_recording')
+console.log(`Recorded ${result.duration_ms}ms to ${result.file_path}`)
+
+// Pause/Resume
+await invoke('plugin:audio-recorder|pause_recording')
+await invoke('plugin:audio-recorder|resume_recording')
+
+// Get status
+const status = await invoke<RecordingStatus>('plugin:audio-recorder|get_status')
+console.log(`State: ${status.state}, Duration: ${status.duration_ms}ms`)
+
+// List devices
+const devices = await invoke('plugin:audio-recorder|get_devices')
+console.log(devices.devices)
+```
+
+### Example: Recording Workflow
+
+```typescript
+import { invoke } from '@tauri-apps/api/core'
+import { appDataDir, join } from '@tauri-apps/api/path'
+
+class AudioRecorder {
+  private isRecording = false
+  
+  async start() {
+    if (this.isRecording) return
+    
+    const timestamp = Date.now()
+    const appData = await appDataDir()
+    const outputPath = await join(appData, 'recordings', `recording-${timestamp}`)
+    
+    try {
+      await invoke('plugin:audio-recorder|start_recording', {
+        config: {
+          output_path: outputPath,
+          quality: 'Medium'  // 44.1kHz, mono
+        }
+      })
+      this.isRecording = true
+      console.log('Recording started')
+    } catch (error) {
+      console.error('Failed to start recording:', error)
+    }
+  }
+  
+  async stop(): Promise<string | null> {
+    if (!this.isRecording) return null
+    
+    try {
+      const result = await invoke<RecordingResult>('plugin:audio-recorder|stop_recording')
+      this.isRecording = false
+      console.log(`Recorded ${result.duration_ms}ms to ${result.file_path}`)
+      return result.file_path
+    } catch (error) {
+      console.error('Failed to stop recording:', error)
+      return null
+    }
+  }
+  
+  async pause() {
+    if (!this.isRecording) return
+    await invoke('plugin:audio-recorder|pause_recording')
+  }
+  
+  async resume() {
+    if (!this.isRecording) return
+    await invoke('plugin:audio-recorder|resume_recording')
+  }
+  
+  async getStatus() {
+    return await invoke<RecordingStatus>('plugin:audio-recorder|get_status')
+  }
+}
+
+// Usage
+const recorder = new AudioRecorder()
+await recorder.start()
+// ... record audio ...
+const filePath = await recorder.stop()
+```
+
+## Dependencies (Cargo.toml)
+
+```toml
+[dependencies]
+tauri = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Audio capture
+cpal = "0.15"
+
+# WAV file writing
+hound = "3.5"
+
+# Logging
+log = "0.4"
+```
+
+## Platform Support
+
+<CardGroup cols={3}>
+  <Card title="macOS" icon="apple" color="#000000">
+    ✅ Fully supported
+    
+    - Uses CoreAudio via cpal
+    - Auto-inherits hardware sample rate
+    - OS permission prompt
+  </Card>
+  <Card title="Linux" icon="linux" color="#FCC624">
+    ✅ Fully supported
+    
+    - Uses ALSA/PulseAudio via cpal
+    - Standard WAV output
+  </Card>
+  <Card title="Windows" icon="windows" color="#0078D4">
+    ✅ Fully supported
+    
+    - Uses WASAPI via cpal
+    - Standard WAV output
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+### No Audio Devices Found
+
+```rust
+Error::DeviceNotFound
+```
+
+**Solution:** Ensure a microphone is connected and enabled in system preferences.
+
+### macOS Mutes Other Apps
+
+<Warning>
+  If Discord/Zoom/etc. are muted when recording, the plugin is forcing a sample rate instead of inheriting the hardware rate.
+</Warning>
+
+**Fix:** Ensure you're using the latest version with the hardware rate inheritance fix (`desktop.rs:156-171`).
+
+### Permission Denied (macOS)
+
+**First run:** The OS will prompt for microphone access. Grant it.
+
+**Subsequent runs:** If denied, go to **System Preferences → Security & Privacy → Microphone** and enable Creative!.
+
+### WAV File Corrupted
+
+If the app crashes during recording, the WAV file may be incomplete (missing header).
+
+**Prevention:** Always call `stop_recording()` before exiting. The plugin handles cleanup in the `Drop` implementation:
+
+```rust
+impl<R: Runtime> Drop for AudioRecorder<R> {
+    fn drop(&mut self) {
+        let _ = self.cmd_tx.send(RecorderCommand::Shutdown);
+        if let Ok(mut guard) = self._thread_handle.lock() {
+            if let Some(handle) = guard.take() {
+                let _ = handle.join();
+            }
+        }
+    }
+}
+```
+
+**Reference:** `src-tauri/tauri-plugin-audio-recorder/src/desktop.rs:505-516`
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Backend Architecture" icon="server" href="/dev/backend">
+    Learn about other Tauri commands and the video server
+  </Card>
+  <Card title="Frontend Architecture" icon="code" href="/dev/frontend">
+    See how the frontend uses the audio plugin in Vue components
+  </Card>
+</CardGroup>

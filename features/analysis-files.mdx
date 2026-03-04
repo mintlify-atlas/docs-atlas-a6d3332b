@@ -1,0 +1,364 @@
+---
+title: 'Analysis Files'
+description: 'Save and share gameplay analysis with the .an file format'
+---
+
+Creative! uses the `.an` file format to package your gameplay video, annotations, and metadata into a single portable file that you can save, share, and reload.
+
+## File Format Structure
+
+An `.an` file is a ZIP archive containing three components:
+
+<CardGroup cols={3}>
+  <Card title="data.json" icon="file-code">
+    Analysis metadata including breakpoints, timestamps, and annotation data
+  </Card>
+  
+  <Card title="video.{ext}" icon="video">
+    The gameplay video file (mp4, mov, etc.) - trimmed if you applied trim operations
+  </Card>
+  
+  <Card title="audio/" icon="folder">
+    Directory containing voice note recordings as WAV files
+  </Card>
+</CardGroup>
+
+### data.json Schema
+
+The `data.json` file contains all analysis metadata:
+
+```json
+{
+  "breakpoints": [
+    {
+      "timeStamp": 150.5,
+      "textContent": [...],
+      "voiceContent": [...],
+      "drawingContent": {...}
+    }
+  ],
+  "videoStart": null,
+  "videoEnd": 300.0
+}
+```
+
+<Accordion title="Field Descriptions">
+- **breakpoints**: Array of all breakpoint objects with their annotations
+- **videoStart**: Start time in seconds (null if video starts at 0)
+- **videoEnd**: End time in seconds (null if video ends at original duration)
+</Accordion>
+
+### Audio Files
+
+Voice annotations are stored in the `audio/` directory:
+
+- **Naming**: `voice_{id}.wav` (e.g., `voice_1.wav`, `voice_2.wav`)
+- **Format**: WAV audio format
+- **References**: The `voiceContent` objects in `data.json` reference these files by filename
+
+<Note>
+  Voice blobs are converted to physical files during export to avoid memory limitations. The Rust backend streams these files directly into the ZIP without loading them entirely into RAM.
+</Note>
+
+## Exporting Analysis Files
+
+The export process handles video trimming, timestamp adjustment, and audio file management.
+
+### Export Workflow
+
+<Steps>
+  <Step title="Check for Trim">
+    If `videoStart` and `videoEnd` are set, the video needs to be trimmed before packaging.
+  </Step>
+  
+  <Step title="Trim Video (if needed)">
+    Creative! uses FFmpeg to extract the trimmed segment:
+    ```bash
+    ffmpeg -ss {videoStart} -i {videoPath} -t {duration} \
+      -c:v libx264 -preset ultrafast -crf 25 \
+      -c:a aac -b:a 128k \
+      -y {outputPath}
+    ```
+    
+    The trimmed video is saved to a temp directory as `trimmed_{timestamp}.mp4`.
+  </Step>
+  
+  <Step title="Adjust Timestamps">
+    If the video was trimmed, all breakpoint timestamps are shifted:
+    ```typescript
+    clonedBreakpoints.forEach((bp) => {
+      bp.timeStamp = bp.timeStamp - videoStart;
+    });
+    ```
+    
+    This ensures timestamps are relative to the new video start (0).
+  </Step>
+  
+  <Step title="Process Voice Notes">
+    Each voice annotation's blob is written to a temporary WAV file:
+    - Generate unique filename: `voice_{id}.wav`
+    - Write blob data to temp directory
+    - Store mapping of filename → absolute path
+    - Remove blob from JSON (can't be serialized)
+  </Step>
+  
+  <Step title="Package with Rust">
+    The `pack_analysis_file` command in Rust creates the final ZIP:
+    ```rust
+    pack_analysis_file(
+      savePath: string,
+      videoPath: string,
+      dataJson: string,
+      audioPaths: HashMap<String, String>
+    )
+    ```
+  </Step>
+</Steps>
+
+### Video Trimming Details
+
+When trimming is required (videoStart and videoEnd are set):
+
+**FFmpeg Parameters**:
+- `-ss {videoStart}`: Start position in seconds
+- `-t {duration}`: Duration to extract (videoEnd - videoStart)
+- `-c:v libx264`: H.264 video codec
+- `-preset ultrafast`: Fast encoding for quick exports
+- `-crf 25`: Constant quality (lower = better quality)
+- `-c:a aac`: AAC audio codec
+- `-b:a 128k`: 128 kbps audio bitrate
+
+**Timestamp Adjustment**:
+```typescript
+// After trimming, update the export data
+finalVideoStart = null;              // New video starts at 0
+finalVideoEnd = videoEnd - videoStart; // Duration of trimmed segment
+```
+
+<Info>
+  Creative! uses a sidecar FFmpeg binary (`binaries/creative-ffmpeg`) to ensure consistent behavior across platforms without requiring users to install FFmpeg separately.
+</Info>
+
+## Importing Analysis Files
+
+The import process unpacks the ZIP and reconstructs the analysis state.
+
+### Import Workflow
+
+<Steps>
+  <Step title="Unpack Archive">
+    The `unpack_analysis_file` Rust command extracts the ZIP to a target directory:
+    ```rust
+    unpack_analysis_file(
+      archive_path: String,
+      target_dir: String
+    ) -> Result<String, String>
+    ```
+    
+    Returns the contents of `data.json` as a string.
+  </Step>
+  
+  <Step title="Create Directory Structure">
+    The unpacker ensures the directory structure exists:
+    - Base directory for the analysis
+    - `audio/` subdirectory for voice files
+    
+    These are created even if the ZIP is empty to prevent errors.
+  </Step>
+  
+  <Step title="Extract Files">
+    Each file in the ZIP is extracted:
+    - `data.json` → root of target directory
+    - `video.{ext}` → root of target directory
+    - `audio/voice_*.wav` → `audio/` subdirectory
+  </Step>
+  
+  <Step title="Parse and Load">
+    The frontend receives the `data.json` contents and:
+    - Parses the JSON to extract breakpoints and metadata
+    - Loads the video file into the player
+    - Reconstructs voice note blobs from audio files
+    - Calls `loadBreakpointData(breakpoints)` to restore analysis state
+  </Step>
+</Steps>
+
+### File Extraction Details
+
+The Rust unpacker handles extraction carefully:
+
+```rust
+for i in 0..archive.len() {
+    let mut file = archive.by_index(i)?;
+    let outpath = match file.enclosed_name() {
+        Some(path) => target_dir.join(path),
+        None => continue,  // Skip invalid entries
+    };
+    
+    // Create parent directories if needed
+    if let Some(p) = outpath.parent() {
+        if !p.exists() {
+            fs::create_dir_all(p)?;
+        }
+    }
+    
+    // Extract file
+    let mut outfile = File::create(&outpath)?;
+    std::io::copy(&mut file, &mut outfile)?;
+}
+```
+
+<Note>
+  The unpacker validates that `data.json` exists in the archive. If it's missing, the import fails with an error: "data.json not found in archive".
+</Note>
+
+## Rust Backend Implementation
+
+Creative! uses Rust (via Tauri) for file operations to handle large videos efficiently.
+
+### pack_analysis_file
+
+Creates a ZIP archive with streaming to avoid memory issues:
+
+<AccordionGroup>
+  <Accordion title="Function Signature">
+    ```rust
+    #[tauri::command]
+    fn pack_analysis_file(
+        save_path: String,
+        video_path: String,
+        data_json: String,
+        audio_paths: HashMap<String, String>,
+    ) -> Result<(), String>
+    ```
+  </Accordion>
+  
+  <Accordion title="Compression Settings">
+    ```rust
+    let options = SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated)
+        .unix_permissions(0o755);
+    ```
+    
+    Uses DEFLATE compression (standard ZIP compression) with executable permissions.
+  </Accordion>
+  
+  <Accordion title="File Streaming">
+    ```rust
+    // Write data.json from string
+    zip.start_file("data.json", options)?;
+    zip.write_all(data_json.as_bytes())?;
+    
+    // Stream video file (avoids loading into RAM)
+    zip.start_file(format!("video.{}", extension), options)?;
+    let mut video_file = File::open(&video_path)?;
+    std::io::copy(&mut video_file, &mut zip)?;
+    
+    // Stream audio files
+    for (filename, path) in audio_paths {
+        zip.start_file(format!("audio/{}", filename), options)?;
+        let mut audio_file = File::open(&path)?;
+        std::io::copy(&mut audio_file, &mut zip)?;
+    }
+    ```
+    
+    Uses `std::io::copy` to stream files directly without loading them into memory.
+  </Accordion>
+</AccordionGroup>
+
+### unpack_analysis_file
+
+Extracts a ZIP archive to a target directory:
+
+<AccordionGroup>
+  <Accordion title="Function Signature">
+    ```rust
+    #[tauri::command]
+    fn unpack_analysis_file(
+        archive_path: String,
+        target_dir: String
+    ) -> Result<String, String>
+    ```
+    
+    Returns the contents of `data.json` as a string, or an error message.
+  </Accordion>
+  
+  <Accordion title="Safety Checks">
+    ```rust
+    let outpath = match file.enclosed_name() {
+        Some(path) => std::path::Path::new(&target_dir).join(path),
+        None => continue,  // Skip entries with invalid names
+    };
+    ```
+    
+    Uses `enclosed_name()` to prevent path traversal attacks (e.g., `../../../etc/passwd`).
+  </Accordion>
+  
+  <Accordion title="data.json Extraction">
+    ```rust
+    if file.name() == "data.json" {
+        // Re-open to read into string (io::copy exhausts the reader)
+        let mut re_file = File::open(&outpath)?;
+        re_file.read_to_string(&mut data_json_content)?;
+    }
+    ```
+    
+    After extracting all files, returns the data.json contents to the frontend.
+  </Accordion>
+</AccordionGroup>
+
+<Tip>
+  The Rust backend handles file I/O asynchronously from the frontend's perspective, preventing the UI from freezing during large file operations.
+</Tip>
+
+## Platform Considerations
+
+### Temporary File Management
+
+Creative! uses platform-specific temp directories:
+
+```typescript
+const appData = await appDataDir();  // Platform-specific app data
+const systemTempDir = await join(appData, "temp");
+```
+
+**Locations**:
+- **Windows**: `%APPDATA%/com.creative.app/temp`
+- **macOS**: `~/Library/Application Support/com.creative.app/temp`
+- **Linux**: `~/.local/share/com.creative.app/temp`
+
+### Video Extension Detection
+
+The packer preserves the original video format:
+
+```rust
+let extension = std::path::Path::new(&video_path)
+    .extension()
+    .and_then(|e| e.to_str())
+    .unwrap_or("mp4");
+```
+
+Supports any video format (mp4, mov, avi, etc.), defaulting to "mp4" if extension detection fails.
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Descriptive Filenames" icon="file">
+    Use descriptive filenames like `clutch-round-analysis.an` or `positioning-mistakes.an` to easily identify analyses later.
+  </Card>
+  
+  <Card title="Regular Saves" icon="floppy-disk">
+    Save your analysis periodically to avoid losing work. The export process is fast even with large videos.
+  </Card>
+  
+  <Card title="Trim Before Sharing" icon="scissors">
+    Trim videos to relevant sections before exporting. This reduces file size and focuses the analysis on key moments.
+  </Card>
+  
+  <Card title="Organize by Game/Topic" icon="folder-tree">
+    Create separate analysis files for different games, sessions, or topics to keep your analysis library organized.
+  </Card>
+</CardGroup>
+
+<Warning>
+  Voice recordings use the WAV format which is uncompressed. If you have many long voice notes, the .an file size can grow significantly. Consider using text annotations for shorter notes to reduce file size.
+</Warning>

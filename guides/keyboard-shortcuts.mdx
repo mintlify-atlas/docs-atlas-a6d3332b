@@ -1,0 +1,216 @@
+---
+title: Keyboard Shortcuts
+description: Speed up your workflow with keyboard shortcuts and playback controls
+---
+
+While Creative! currently relies primarily on mouse/click interactions, understanding the available controls and common video playback patterns can help you work more efficiently.
+
+## Current State of Keyboard Shortcuts
+
+<Warning>
+Creative! does not currently implement custom keyboard shortcuts. All interactions are performed through clicking buttons and UI elements.
+</Warning>
+
+The application is designed with a click-based interface where you:
+- Click mode switches to toggle between Replay and Analysis modes
+- Click playback control buttons (play, pause, skip, etc.)
+- Click timeline positions to seek
+- Click tools in the Analysis Menu to activate them
+
+## Playback Controls (Click-Based)
+
+All playback controls are accessed via clicking the control buttons:
+
+### Timeline Controls
+
+| Control | Function | Location |
+|---------|----------|----------|
+| Timeline click | Jump to specific timestamp | Click anywhere on the timeline bar |
+| Skip to Start | Jump to video beginning | Leftmost playback control button |
+| Skip to End | Jump to video end | Rightmost playback control button |
+
+### Speed Controls
+
+| Control | Function | Behavior |
+|---------|----------|----------|
+| Rewind | Play video in reverse | Click once to start, click again to increase speed (loops) |
+| Play/Pause | Toggle playback | Click to play or pause video |
+| Fast Forward | Play video faster | Click once to start, click again to increase speed (loops) |
+
+<Info>
+Both Rewind and Fast Forward support speed looping - clicking repeatedly cycles through faster playback speeds.
+</Info>
+
+## Mode Switching
+
+| Action | Method |
+|--------|--------|
+| Switch to Replay Mode | Click "Replay Mode" at the top of the screen |
+| Switch to Analysis Mode | Click "Analysis Mode" at the top of the screen |
+
+<Note>
+Switching modes affects which UI elements are visible. Analysis Mode shows the Analysis Menu on the right, while Replay Mode maximizes the video player.
+</Note>
+
+## Analysis Tools
+
+All tools are activated by clicking in the Analysis Menu:
+
+| Tool | Activation | Deactivation |
+|------|------------|-------------|
+| Draw | Click "Draw" in Tools section | Click "Draw" again |
+| Text Note | Click "Text Note" in Tools section | Click "Text Note" again |
+| Voice Note | Click "Voice Note" in Tools section | Click "Voice Note" again |
+| Trim | Click "Trim" in Edit section | Click "Cancel" or "Confirm" |
+
+### Color Selection (Draw Tool)
+
+When the Draw tool is active:
+- Click on the red circle for red
+- Click on the green circle for green  
+- Click on the magenta circle for magenta
+- Click on the yellow circle for yellow
+
+## Breakpoint Management
+
+| Action | Method |
+|--------|--------|
+| Create breakpoint | Click "Create Breakpoint" button on video |
+| Select breakpoint | Click breakpoint marker on timeline |
+| Delete breakpoint | Click "Delete Breakpoint" button in Analysis Menu |
+
+## Common Workflows
+
+<AccordionGroup>
+  <Accordion title="Quick video scrubbing">
+    **Goal**: Quickly navigate through your video to find key moments
+    
+    **Workflow**:
+    1. Click directly on the timeline to jump to approximate positions
+    2. Use Skip to Start to return to beginning
+    3. Use Fast Forward to quickly scan through footage
+    4. Click Play/Pause when you find the moment
+  </Accordion>
+
+  <Accordion title="Rapid breakpoint creation">
+    **Goal**: Create multiple breakpoints efficiently
+    
+    **Workflow**:
+    1. Stay in Analysis Mode
+    2. Click timeline to jump to desired moment
+    3. Click "Create Breakpoint" button
+    4. Click timeline again for next moment
+    5. Repeat steps 3-4
+    
+    <Info>
+    You can create breakpoints quickly, then add annotations later by clicking each breakpoint on the timeline.
+    </Info>
+  </Accordion>
+
+  <Accordion title="Tool switching pattern">
+    **Goal**: Add multiple annotation types to a single breakpoint
+    
+    **Workflow**:
+    1. Select your breakpoint
+    2. Click "Draw" → annotate → click "Draw" to exit
+    3. Click "Text Note" → type notes → click "Text Note" to exit
+    4. Click "Voice Note" → record → stop recording
+    
+    <Note>
+    Only one tool can be active at a time. Always deactivate the current tool before activating another.
+    </Note>
+  </Accordion>
+</AccordionGroup>
+
+## Browser/System Shortcuts
+
+While Creative! doesn't implement custom shortcuts, you can use system-level shortcuts:
+
+### Window Management (Desktop)
+
+| Shortcut | Function | Platform |
+|----------|----------|----------|
+| `Alt + F4` | Close application | Windows/Linux |
+| `Cmd + Q` | Quit application | macOS |
+| `Cmd + W` | Close window | macOS |
+| `Alt + Tab` | Switch between apps | Windows/Linux |
+| `Cmd + Tab` | Switch between apps | macOS |
+
+### Accessibility
+
+| Shortcut | Function | Platform |
+|----------|----------|----------|
+| `Cmd + +` | Zoom in | macOS |
+| `Cmd + -` | Zoom out | macOS |
+| `Ctrl + Scroll` | Zoom in/out | Windows/Linux |
+
+## Potential Future Shortcuts
+
+While not currently implemented, these shortcuts would enhance the Creative! workflow:
+
+<AccordionGroup>
+  <Accordion title="Playback shortcuts (not implemented)">
+    Potential shortcuts for video control:
+    - `Space` - Play/Pause
+    - `← / →` - Skip backward/forward 5 seconds
+    - `J / L` - Rewind/Fast forward
+    - `K` - Pause
+    - `Home / End` - Skip to start/end
+    - `0-9` - Jump to 0%, 10%, 20%... of video
+  </Accordion>
+
+  <Accordion title="Mode shortcuts (not implemented)">
+    Potential shortcuts for mode switching:
+    - `R` - Switch to Replay Mode
+    - `A` - Switch to Analysis Mode
+    - `Tab` - Toggle between modes
+  </Accordion>
+
+  <Accordion title="Tool shortcuts (not implemented)">
+    Potential shortcuts for analysis tools:
+    - `D` - Toggle Draw tool
+    - `T` - Toggle Text Note tool
+    - `V` - Toggle Voice Note tool
+    - `X` - Delete selected breakpoint
+    - `B` - Create breakpoint at current time
+    - `1-4` - Select drawing colors
+  </Accordion>
+
+  <Accordion title="Timeline shortcuts (not implemented)">
+    Potential shortcuts for navigation:
+    - `[ / ]` - Jump to previous/next breakpoint
+    - `Shift + [ / ]` - Move breakpoint earlier/later
+    - `I / O` - Set trim in/out points
+  </Accordion>
+</AccordionGroup>
+
+<Info>
+If you'd like to see keyboard shortcuts implemented, consider contributing to the project or opening a feature request on the Creative! repository.
+</Info>
+
+## Tips for Efficiency
+
+Even without keyboard shortcuts, you can work efficiently:
+
+1. **Position your cursor strategically**: Keep your mouse near frequently used controls
+2. **Use wide clicks on timeline**: You don't need pinpoint accuracy - clicking near a moment gets you close enough
+3. **Create breakpoints first, annotate later**: Quickly mark all key moments, then go back to add detailed notes
+4. **Leave tools active**: If you're doing multiple drawings, keep Draw mode active and just click between breakpoints
+5. **Use trim to focus**: Rather than repeatedly skipping past irrelevant footage, trim the video to your analysis segment
+
+## Mouse Gestures
+
+While not traditional "shortcuts," Creative! uses these mouse interactions:
+
+| Gesture | Function | Context |
+|---------|----------|----------|
+| Click and drag | Draw on video | When Draw tool is active |
+| Click and drag | Move trim handles | When Trim mode is active |
+| Single click | Create/select breakpoint | On timeline or Create Breakpoint button |
+| Single click | Seek video | On timeline (outside trim mode) |
+
+## Next Steps
+
+- Return to [creating analysis](/guides/creating-analysis) to see the complete workflow
+- Learn about [exporting and sharing](/guides/exporting-sharing) your work
+- Check [troubleshooting](/guides/troubleshooting) if you encounter issues

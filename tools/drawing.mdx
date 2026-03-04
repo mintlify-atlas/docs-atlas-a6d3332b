@@ -1,0 +1,188 @@
+---
+title: Drawing Tool
+description: Create freehand annotations directly on video frames during gameplay analysis
+---
+
+The Drawing tool allows you to create freehand annotations on video frames, highlighting specific areas of interest during gameplay analysis. You can draw shapes, arrows, circles, and any freehand marks with customizable colors.
+
+## How It Works
+
+The drawing system uses an HTML5 canvas overlay that sits on top of your video player. When you draw, Creative! captures normalized coordinates (0-1 range) that automatically scale with your video window, ensuring annotations remain properly positioned regardless of window size.
+
+### Vector-Based Storage
+
+Drawings are stored as vectors rather than rasterized images. Each drawing stroke is represented as:
+
+- **Line**: Array of coordinate points `{x, y}` in normalized form
+- **Color**: Stroke color (red, green, magenta, or yellow)
+- **Line width**: Constant stroke width for consistency
+- **Line cap**: Round caps for smooth appearance
+
+This approach ensures your annotations remain crisp when resizing windows and keeps file sizes minimal.
+
+## Using the Drawing Tool
+
+<Steps>
+  <Step title="Activate Draw Mode">
+    Click the **Draw** tool in the analysis sidebar. The icon will highlight in your selected color when active.
+  </Step>
+  
+  <Step title="Select a Color">
+    Choose from four colors:
+    - Red
+    - Green
+    - Magenta
+    - Yellow
+    
+    The color picker appears below the Draw button when the tool is active.
+  </Step>
+  
+  <Step title="Draw on the Video">
+    Click and drag on the video frame to create annotations. Your strokes appear in real-time as you draw.
+  </Step>
+  
+  <Step title="Delete Strokes">
+    Right-click on any stroke to delete it. The collision detection system (with 2x line width tolerance) makes it easy to select strokes for deletion.
+  </Step>
+</Steps>
+
+## Color Selection
+
+The drawing tool offers four high-contrast colors optimized for visibility on video content:
+
+<CardGroup cols={2}>
+  <Card title="Red" icon="circle" color="#ff0000">
+    Highlight critical moments or errors
+  </Card>
+  <Card title="Green" icon="circle" color="#00ff00">
+    Mark successful plays or good positioning
+  </Card>
+  <Card title="Magenta" icon="circle" color="#ff00ff">
+    Indicate areas of interest or questions
+  </Card>
+  <Card title="Yellow" icon="circle" color="#ffff00">
+    Draw attention to specific elements
+  </Card>
+</CardGroup>
+
+<Tip>
+Use different colors to categorize your annotations. For example, red for mistakes, green for good plays, and yellow for areas needing review.
+</Tip>
+
+## Technical Implementation
+
+### Canvas Rendering
+
+Drawings are rendered on a dedicated canvas layer (`src/components/analysis/elements/Drawing.vue`) that:
+
+1. Matches the video container dimensions using ResizeObserver
+2. Scales coordinates from normalized (0-1) to pixel coordinates
+3. Redraws all vectors efficiently using requestAnimationFrame
+
+### Drawing Workflow
+
+The drawing process follows three phases:
+
+**Start Drawing** (`startDrawing` in `handleDraw.ts:4-19`)
+```typescript
+// Creates new vector with initial point
+currentVector = {
+  line: [{ x, y }],
+  color: strokeColor,
+  lineWidth: lineWidth,
+  lineCap: "round"
+}
+```
+
+**Continue Drawing** (`continueDrawing` in `handleDraw.ts:21-31`)
+```typescript
+// Adds points to current vector as mouse moves
+currentVector.line.push({ x, y })
+redrawFn() // Triggers canvas update
+```
+
+**Stop Drawing** (`stopDrawing` in `handleDraw.ts:33-45`)
+```typescript
+// Finalizes vector and adds to breakpoint
+vectors.push(currentVector)
+currentVector = null
+```
+
+### Collision Detection
+
+The `checkCollision` function (`handleDraw.ts:90-124`) enables stroke deletion by:
+
+1. Checking vectors in reverse order (topmost first)
+2. Using Path2D for precise stroke hit testing
+3. Applying 2x line width tolerance for easier selection
+4. Returning the index of the hit vector
+
+<Note>
+The canvas uses `pointer-events: none` to prevent interfering with video controls on Windows WebView2.
+</Note>
+
+## Best Practices
+
+### For Clear Annotations
+
+- **Keep strokes simple**: Short, clear marks are easier to understand than complex drawings
+- **Use color strategically**: Reserve specific colors for specific types of annotations
+- **Avoid overcrowding**: Too many drawings on one frame can be overwhelming
+
+### For Performance
+
+- **Limit stroke count**: Each frame can handle dozens of strokes without performance issues
+- **Delete unnecessary strokes**: Right-click to remove strokes you no longer need
+- **Use other tools when appropriate**: Consider text notes for detailed explanations
+
+<Tip>
+For frame-by-frame analysis, create separate breakpoints at different timestamps rather than cluttering a single frame with too many annotations.
+</Tip>
+
+## Export Behavior
+
+When you export your analysis file, drawings are stored as part of the breakpoint data:
+
+- All vectors are serialized to JSON with normalized coordinates
+- No image files are created (vector-based storage)
+- Drawings automatically scale to match the video resolution
+- Color and line properties are preserved exactly
+
+## Troubleshooting
+
+### Drawings appear in wrong position after window resize
+
+This shouldn't happen due to normalized coordinates. If it does:
+- Pause the video and reload the analysis file
+- Check that you're using the latest version of Creative!
+
+### Cannot delete a stroke
+
+The collision detection has a generous hit area. Try:
+- Right-clicking closer to the center of the stroke
+- Zooming in if working with very thin strokes
+- Using undo (Ctrl+Z) if you just created the stroke
+
+### Drawing feels laggy
+
+If drawing performance degrades:
+- Close other resource-intensive applications
+- Reduce the number of strokes on screen
+- Check that hardware acceleration is enabled in your system settings
+
+<Warning>
+Drawings are tied to specific breakpoints. If you delete a breakpoint, all associated drawings are permanently removed.
+</Warning>
+
+## Keyboard Shortcuts
+
+| Action | Shortcut |
+|--------|----------|
+| Toggle Draw Mode | `D` |
+| Cycle Colors | `C` |
+| Delete Last Stroke | `Ctrl+Z` |
+| Clear All Strokes | `Ctrl+Shift+Z` |
+
+<Note>
+Keyboard shortcuts are available when the video player has focus.
+</Note>

@@ -1,0 +1,589 @@
+---
+title: Frontend Architecture
+description: Vue 3 composition API, component structure, and state management patterns
+---
+
+## Overview
+
+The Creative! frontend is built with **Vue 3.5+** using the Composition API and TypeScript. State management uses a combination of **provide/inject** for hierarchical data and **exported refs** from composables for shared global state.
+
+## Project Structure
+
+```
+src/
+├── App.vue                    # Root component with state providers
+├── components/
+│   ├── Modes.vue              # Replay/Analysis mode switcher
+│   ├── video/
+│   │   ├── VideoComponent.vue
+│   │   └── VideoPlaceholder.vue
+│   ├── AnalysisMenu.vue       # Right sidebar for analysis tools
+│   └── store/
+│       └── hooks/             # Composables for state management
+│           ├── useVideo.ts
+│           ├── useBreakpoint.ts
+│           └── useFileUpload.ts
+├── assets/
+│   └── interfaces/            # TypeScript type definitions
+└── main.ts
+```
+
+## Root Component (App.vue)
+
+### State Initialization
+
+The root component sets up all global state and provides it to child components:
+
+```vue
+<script setup lang="ts">
+import { ref, provide, Ref, useTemplateRef } from "vue"
+import { useVideo } from "./components/store/hooks/useVideo"
+import useBreakpoint from "./components/store/hooks/useBreakpoint"
+import { videoUrl, analysisData } from "./components/store/hooks/useFileUpload"
+
+// Mode state (replay vs analysis)
+const mode: Ref<"replay" | "analysis"> = ref("replay")
+const editing: SelectedTool = ref(null)
+
+// Video playback controls
+const videoElement = useTemplateRef("video-playback")
+const playbackControls = useVideo(videoElement)
+
+// Breakpoint/analysis state
+const breakpointStore = useBreakpoint()
+
+// Provide to all descendants
+provide("mode", { mode, toggleMode })
+provide("video", { videoElement, playbackControls })
+provide("breakpointStore", breakpointStore)
+provide("editing", editing)
+provide("activeColor", ref("red"))
+</script>
+```
+
+**Reference:** `src/App.vue:1-65`
+
+### Loading State Handling
+
+```vue
+<template>
+  <div v-if="pendingProcess" class="loading-overlay">
+    <div class="spinner"></div>
+    <p>{{ pendingProcess }}</p>
+  </div>
+  <!-- Main UI -->
+</template>
+```
+
+The `pendingProcess` ref (from `useFileUpload`) displays a full-screen overlay during:
+- File unpacking (`.an` archives)
+- Video loading
+- Large file operations
+
+**Reference:** `src/App.vue:68-71`
+
+## State Management Composables
+
+### useVideo() - Playback Control
+
+<Info>
+  Manages all video playback state including play/pause, seeking, variable-speed playback, and trim boundaries.
+</Info>
+
+#### Core Features
+
+<Tabs>
+  <Tab title="API Surface">
+    ```typescript
+    interface VideoHook {
+      // State (readonly)
+      videoElement: Ref<HTMLVideoElement | null>
+      currentTime: Ref<number | null>
+      totalDuration: Ref<number | null>
+      videoStart: Ref<number>  // Trim start point
+      progress: Ref<number>     // Percentage 0-100
+      isPlaying: Ref<boolean>
+      playbackDirection: Ref<boolean | null>  // true=forward, false=rewind, null=paused
+      playbackSpeed: Ref<1 | 2 | 3 | 4 | 5 | 10>
+      
+      // Methods
+      play(): void
+      pause(): void
+      fastForward(speed?: PlaybackSpeed | "loop"): void
+      rewind(speed?: PlaybackSpeed | "loop"): void
+      skipToStart(): void
+      skipToEnd(): void
+      skipToTime(percent: number): void  // 0-1 range
+      setTrim(start: number | null, end: number | null): void
+      initializePlayback(): void  // Call on @loadedmetadata
+    }
+    ```
+  </Tab>
+  <Tab title="Implementation">
+    ```typescript
+    // src/components/store/hooks/useVideo.ts
+    export function useVideo(initialSrc: VideoRef = ref(null)): VideoHook {
+      const _videoElementRef = initialSrc
+      const _currentFrame = ref<number | null>(null)
+      const _playbackDirection = ref<boolean | null>(null)
+      const _playbackSpeed = ref<PlaybackSpeed>(1)
+      const _customVideoEnd = ref<number | null>(null)
+      const _customVideoStart = ref<number | null>(null)
+      
+      // Watch for playback changes
+      watch([_playbackDirection, _playbackSpeed], ([newDir, newSpeed]) => {
+        if (!_videoElementRef.value) return
+        
+        _clearAllIntervals()
+        _cancelLoop()
+        
+        switch (newDir) {
+          case true:  // Forward
+            if (newSpeed === 1) {
+              _videoElementRef.value.playbackRate = 1
+              _videoElementRef.value.play()
+              _loop()  // Start progress tracking
+            } else {
+              _playManualSeek(newSpeed, true)
+            }
+            break
+          case false: // Rewind
+            _playManualSeek(newSpeed, false)
+            break
+          case null:  // Paused
+            _videoElementRef.value.pause()
+            break
+        }
+      })
+      
+      return { /* ... public API ... */ }
+    }
+    ```
+    **Reference:** `src/components/store/hooks/useVideo.ts:9-396`
+  </Tab>
+  <Tab title="Manual Seeking">
+    For speeds >1x or any rewind, native playback is insufficient. The composable uses interval-based seeking:
+    
+    ```typescript
+    const _playManualSeek = (rate: PlaybackSpeed, direction: boolean) => {
+      const TARGET_FPS = 30
+      const INTERVAL_MS = 1000 / TARGET_FPS
+      
+      _intervalTracker = setInterval(() => {
+        const video = _videoElementRef.value
+        if (!video) return
+        
+        const jumpSeconds = (rate * INTERVAL_MS) / 1000
+        
+        if (!direction) {  // Rewind
+          if (video.currentTime <= _startTime.value) {
+            pause()
+            return
+          }
+          video.currentTime -= jumpSeconds
+        } else {  // Fast forward
+          const endPoint = _customVideoEnd.value || video.duration
+          if (video.currentTime + jumpSeconds >= endPoint) {
+            pause()
+            return
+          }
+          video.currentTime += jumpSeconds
+        }
+        
+        _currentFrame.value = video.currentTime
+      }, INTERVAL_MS)
+    }
+    ```
+    **Reference:** `src/components/store/hooks/useVideo.ts:260-321`
+  </Tab>
+</Tabs>
+
+#### Trim Boundaries
+
+```typescript
+const setTrim = (start: number | null, end: number | null) => {
+  if (start === null || end === null) {
+    _customVideoStart.value = null
+    _customVideoEnd.value = null
+    return
+  }
+  
+  // start and end are relative to current visible clip
+  const currentAbsoluteStart = _startTime.value || 0
+  const newStart = currentAbsoluteStart + start
+  const newEnd = currentAbsoluteStart + end
+  
+  _customVideoStart.value = newStart
+  _customVideoEnd.value = newEnd
+  
+  // Jump to trim start if current position is outside bounds
+  if (_videoElementRef.value) {
+    const currentTime = _videoElementRef.value.currentTime
+    if (currentTime < newStart || currentTime > newEnd) {
+      _videoElementRef.value.currentTime = newStart
+      _currentFrame.value = newStart
+    }
+  }
+}
+```
+
+**Reference:** `src/components/store/hooks/useVideo.ts:346-371`
+
+<Note>
+  When exporting analysis files, trim boundaries are saved to `data.json` as `videoStart` and `videoEnd`. On import, `setTrim()` is called in `App.vue:44-46` to restore the trimmed segment.
+</Note>
+
+### useBreakpoint() - Analysis Data
+
+<Info>
+  Manages breakpoint markers (timestamps) and their associated content: text annotations, voice recordings, and drawings.
+</Info>
+
+#### Data Structure
+
+```typescript
+interface Breakpoint {
+  timeStamp: number  // Video time in seconds
+  textContent?: TextContent[]
+  voiceContent?: VoiceContent[]
+  drawingContent?: DrawingContent
+}
+
+interface TextContent {
+  id: number
+  type: "text"
+  content: string
+  position: { top: number; left: number }
+  dimensions: { width: number; height: number }
+  invertedX: boolean
+  invertedY: boolean
+  isCollapsed: boolean
+}
+
+interface VoiceContent {
+  id: number
+  type: "voice"
+  fileBlob: Blob
+  filename?: string  // Set during export
+  duration: number
+  position: { top: number; left: number }
+  dimensions: { width: number; height: number }
+  isCollapsed: boolean
+}
+```
+
+#### API Methods
+
+<CodeGroup>
+```typescript Creating Breakpoints
+const breakpointStore = useBreakpoint()
+
+// Create breakpoint at current timestamp
+const bp = breakpointStore.createBreakpoint(videoElement.currentTime)
+
+// Add text annotation
+breakpointStore.createTextContent(
+  bp.timeStamp,
+  "Watch the crosshair placement here",
+  { top: 100, left: 200 },
+  { width: 300, height: 150 }
+)
+
+// Add voice recording
+breakpointStore.createVoiceContent(
+  bp.timeStamp,
+  audioBlob,
+  { top: 50, left: 50 },
+  { width: 200, height: 80 },
+  5.2  // duration in seconds
+)
+```
+
+```typescript State Management
+// Set active breakpoint (for editing UI)
+breakpointStore.setCurrentBreakpoint(timeStamp)
+
+// Remove breakpoint
+breakpointStore.removeBreakpoint(timeStamp)
+
+// Clear all
+breakpointStore.removeAllBreakpoints()
+
+// Cleanup after trim
+breakpointStore.cleanupBreakpoints(trimStart, trimEnd)
+```
+
+```typescript Import/Export
+// Load from parsed data.json
+breakpointStore.loadBreakpointData(analysisData.breakpoints)
+
+// Access for export
+const dataToExport = {
+  breakpoints: breakpointStore.breakpoints.value,
+  videoStart: playbackControls.videoStart.value,
+  videoEnd: playbackControls.totalDuration.value
+}
+```
+</CodeGroup>
+
+**Reference:** `src/components/store/hooks/useBreakpoint.ts:28-238`
+
+#### ID Generation
+
+<Warning>
+  IDs for content items are auto-incremented within the composable. When importing data, `loadBreakpointData()` scans all existing IDs and sets `currentId` to `maxId + 1` to prevent collisions.
+</Warning>
+
+```typescript
+const loadBreakpointData = (breakpoints: Breakpoint[]) => {
+  _state.breakpoints = breakpoints
+  
+  // Update currentId to avoid collisions
+  let maxId = 0
+  breakpoints.forEach((bp) => {
+    bp.textContent?.forEach((tc) => (maxId = Math.max(maxId, tc.id)))
+    bp.voiceContent?.forEach((vc) => (maxId = Math.max(maxId, vc.id)))
+    if (bp.drawingContent) maxId = Math.max(maxId, bp.drawingContent.id)
+  })
+  currentId = maxId + 1
+}
+```
+
+**Reference:** `src/components/store/hooks/useBreakpoint.ts:184-204`
+
+### useFileUpload() - File I/O
+
+<Info>
+  Handles video file selection, .an archive packing/unpacking, and platform-specific URL construction.
+</Info>
+
+#### Exported Refs (Global State)
+
+```typescript
+// Shared across all components via imports
+export const videoUrl = ref<string | null>(null)
+export const videoPath = ref<string | null>(null)  // Absolute filesystem path
+export const videoName = ref<string | null>(null)
+export const analysisData = ref<AnalysisExportData | null>(null)
+export const pendingProcess = ref<string | null>(null)
+```
+
+**Reference:** `src/components/store/hooks/useFileUpload.ts:9-14`
+
+#### Video URL Construction
+
+<Tabs>
+  <Tab title="Windows">
+    ```typescript
+    const buildAssetUrl = (port: number, absolutePath: string) => {
+      if (type() === "windows") {
+        // convertFileSrc returns: asset://localhost/C:/path/to/video.mp4
+        const assetUrl = convertFileSrc(absolutePath)
+        // WebView2 requires http:// to bypass CORS
+        return assetUrl.replace("asset://localhost/", "http://asset.localhost/")
+      }
+      // Non-Windows path...
+    }
+    ```
+    **Reference:** `src/components/store/hooks/useFileUpload.ts:16-27`
+  </Tab>
+  <Tab title="macOS/Linux">
+    ```typescript
+    const buildAssetUrl = (port: number, absolutePath: string) => {
+      if (type() !== "windows") {
+        // Use HTTP server with query param
+        return `http://127.0.0.1:${port}/?path=${encodeURIComponent(absolutePath)}`
+      }
+      // Windows path...
+    }
+    ```
+    **Reference:** `src/components/store/hooks/useFileUpload.ts:16-27`
+  </Tab>
+</Tabs>
+
+#### File Selection Flow
+
+<Steps>
+  <Step title="Open native dialog">
+    ```typescript
+    const selected = await open({
+      multiple: false,
+      title: "Select a videogame replay file",
+      filters: [{
+        name: "Video or Analysis",
+        extensions: ["mp4", "webm", "mov", "an", "anal"]
+      }]
+    })
+    ```
+  </Step>
+  <Step title="Determine file type">
+    ```typescript
+    if (fileName.endsWith(".an") || fileName.endsWith(".anal")) {
+      // Unpack analysis archive
+    } else {
+      // Direct video playback
+    }
+    ```
+  </Step>
+  <Step title="Unpack archive (if .an)">
+    ```typescript
+    const dataJsonStr = await invoke<string>("unpack_analysis_file", {
+      archivePath: selected,
+      targetDir: extractionTarget
+    })
+    const parsedData = JSON.parse(dataJsonStr)
+    
+    // Reconstruct audio blobs
+    for (const bp of parsedData.breakpoints) {
+      for (const vc of bp.voiceContent) {
+        if (vc.filename) {
+          const audioUrl = buildAssetUrl(port, audioPath)
+          const res = await fetch(audioUrl)
+          vc.fileBlob = await res.blob()
+        }
+      }
+    }
+    
+    analysisData.value = parsedData
+    ```
+    **Reference:** `src/components/store/hooks/useFileUpload.ts:75-106`
+  </Step>
+  <Step title="Update state">
+    ```typescript
+    videoUrl.value = buildAssetUrl(port, videoPath)
+    videoName.value = fileName
+    ```
+    This triggers `@loadedmetadata` event in `App.vue:84`
+  </Step>
+</Steps>
+
+## Component Communication Patterns
+
+### Provide/Inject (Hierarchical)
+
+Used for state that flows down the component tree:
+
+```vue
+<!-- Parent: App.vue -->
+<script setup>
+const mode = ref("replay")
+provide("mode", { mode, toggleMode })
+</script>
+
+<!-- Child: Modes.vue -->
+<script setup>
+const { mode, toggleMode } = inject("mode")
+</script>
+<button @click="toggleMode">
+  {{ mode === 'replay' ? 'Analysis' : 'Replay' }}
+</button>
+```
+
+### Shared Refs (Global)
+
+Used for state that needs to be accessed from multiple unrelated components:
+
+```typescript
+// useFileUpload.ts (export)
+export const videoUrl = ref<string | null>(null)
+
+// App.vue (import and use)
+import { videoUrl } from "./store/hooks/useFileUpload"
+<video v-if="videoUrl" :src="videoUrl" />
+
+// Any other component (import and use)
+import { videoUrl } from "@/store/hooks/useFileUpload"
+const hasVideo = computed(() => videoUrl.value !== null)
+```
+
+## TypeScript Interfaces
+
+Key type definitions are stored in `src/assets/interfaces/`:
+
+```typescript
+// BreakpointType.ts
+export interface BreakpointHook {
+  breakpoints: Readonly<Ref<Breakpoint[]>>
+  activeBreakpoint: Ref<Breakpoint | null>
+  createBreakpoint(timeStamp: number): Breakpoint
+  createTextContent(...): void
+  createVoiceContent(...): void
+  // ...
+}
+
+// VideoState.ts
+export interface VideoHook {
+  currentTime: Readonly<Ref<number | null>>
+  totalDuration: Readonly<Ref<number | null>>
+  isPlaying: Readonly<Ref<boolean>>
+  play(): void
+  pause(): void
+  // ...
+}
+
+// AnalysisFileData.ts
+export interface AnalysisExportData {
+  breakpoints: Breakpoint[]
+  videoStart: number | null
+  videoEnd: number | null
+}
+```
+
+## Performance Considerations
+
+### Video Loading
+
+<Note>
+  Always unmount the video element before changing `videoUrl.value` to ensure the `@loadedmetadata` event fires:
+  
+  ```typescript
+  videoUrl.value = null  // Force unmount
+  await nextTick()
+  videoUrl.value = newUrl  // Remount with new source
+  ```
+</Note>
+
+### Large Archive Handling
+
+For `.an` files, unpacking is delegated to Rust to avoid JavaScript memory limits:
+
+```typescript
+// This bypasses JS engine completely
+const dataJson = await invoke<string>("unpack_analysis_file", {
+  archivePath: selected,
+  targetDir: extractionTarget
+})
+// Only the parsed JSON is loaded into JS memory
+```
+
+**Reference:** `src/components/store/hooks/useFileUpload.ts:75-78`
+
+### Audio Blob Reconstruction
+
+Audio files are fetched individually after unpacking (lazy loading):
+
+```typescript
+for (const vc of bp.voiceContent) {
+  if (vc.filename) {
+    const audioUrl = buildAssetUrl(port, audioPath)
+    const res = await fetch(audioUrl)
+    vc.fileBlob = await res.blob()  // Load into memory
+  }
+}
+```
+
+This approach:
+- Reduces initial load time
+- Only loads audio that exists in breakpoints
+- Uses streaming fetch (handled by Tauri/browser)
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Backend Architecture" icon="server" href="/dev/backend">
+    Learn about Tauri commands and the video server
+  </Card>
+  <Card title="Audio Plugin" icon="microphone" href="/dev/audio-plugin">
+    Explore the custom audio recorder implementation
+  </Card>
+</CardGroup>

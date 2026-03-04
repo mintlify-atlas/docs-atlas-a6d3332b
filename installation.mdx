@@ -1,0 +1,147 @@
+---
+title: Installation
+description: Install Creative! on Windows, macOS, or Linux
+---
+
+# Installation
+
+Creative! is available for Windows, macOS, and Linux. Download the latest release from the [releases section](https://github.com/yourusername/creative/releases) and follow the instructions for your operating system.
+
+## System requirements
+
+Creative! is built with Tauri and Vue 3, providing native performance across all platforms:
+
+- **Windows**: Windows 10 or later
+- **macOS**: macOS 10.15 (Catalina) or later
+- **Linux**: Any modern distribution with GTK 3 support
+
+## Installation by platform
+
+<Tabs>
+  <Tab title="Windows">
+    <Steps>
+      <Step title="Download the installer">
+        Download the `.exe` installer from the [releases page](https://github.com/yourusername/creative/releases).
+      </Step>
+      
+      <Step title="Run the installer">
+        Double-click the downloaded `.exe` file and follow the installation wizard.
+      </Step>
+      
+      <Step title="Launch Creative!">
+        Once installed, you can launch Creative! from your Start menu or desktop shortcut.
+      </Step>
+    </Steps>
+
+    <Note>
+      Creative! requires Visual Studio C++ runtime dependencies, which are typically already installed on Windows systems. If you encounter any issues, the installer will guide you through installing these dependencies.
+    </Note>
+  </Tab>
+
+  <Tab title="macOS">
+    <Steps>
+      <Step title="Download the app">
+        Download the `.dmg` file from the [releases page](https://github.com/yourusername/creative/releases).
+      </Step>
+      
+      <Step title="Install the application">
+        Open the `.dmg` file and drag Creative! to your Applications folder.
+      </Step>
+      
+      <Step title="Remove macOS quarantine">
+        This application is not signed, so macOS will quarantine it by default and display an error message when you try to open it.
+        
+        To run the app on macOS, open Terminal and run:
+        
+        ```bash
+        sudo xattr -r -d com.apple.quarantine /Applications/Creative.app
+        ```
+        
+        Replace `/Applications/Creative.app` with the actual path if you installed it elsewhere.
+      </Step>
+      
+      <Step title="Launch Creative!">
+        Open Creative! from your Applications folder or Spotlight search.
+      </Step>
+    </Steps>
+
+    <Warning>
+      Because Creative! is not signed with an Apple Developer certificate, you must manually remove the quarantine flag using the command above. This is a one-time setup step.
+    </Warning>
+  </Tab>
+
+  <Tab title="Linux">
+    <Steps>
+      <Step title="Download the package">
+        Download the appropriate package for your distribution from the [releases page](https://github.com/yourusername/creative/releases):
+        - `.deb` for Debian/Ubuntu-based distributions
+        - `.AppImage` for universal Linux compatibility
+        - `.rpm` for Fedora/RHEL-based distributions
+      </Step>
+      
+      <Step title="Install the package">
+        **For .deb packages:**
+        ```bash
+        sudo dpkg -i creative_*.deb
+        sudo apt-get install -f  # Install dependencies if needed
+        ```
+        
+        **For .AppImage:**
+        ```bash
+        chmod +x creative_*.AppImage
+        ./creative_*.AppImage
+        ```
+        
+        **For .rpm packages:**
+        ```bash
+        sudo rpm -i creative_*.rpm
+        ```
+      </Step>
+      
+      <Step title="Launch Creative!">
+        Launch Creative! from your application menu or run it from the terminal.
+      </Step>
+    </Steps>
+
+    <Note>
+      Creative! requires GTK 3 and WebKitGTK, which are typically pre-installed on most modern Linux distributions. If you encounter issues, install these dependencies using your package manager.
+    </Note>
+  </Tab>
+</Tabs>
+
+## Verify installation
+
+Once installed, launch Creative! and you should see the main interface with two mode buttons at the top:
+
+- **Replay Mode**: For watching videos
+- **Analysis Mode**: For creating annotations and breakpoints
+
+If you see this interface, you're ready to start analyzing gameplay! Continue to the [quickstart guide](/quickstart) to learn how to use Creative!.
+
+## Troubleshooting
+
+### Windows
+
+**Issue**: Application won't start or crashes immediately.
+
+**Solution**: Install the Visual Studio C++ redistributables from [Microsoft's website](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist).
+
+### macOS
+
+**Issue**: "Creative.app is damaged and can't be opened" error.
+
+**Solution**: Run the quarantine removal command shown in the macOS installation steps above.
+
+### Linux
+
+**Issue**: AppImage won't run.
+
+**Solution**: Make sure FUSE is installed:
+```bash
+sudo apt install libfuse2  # Debian/Ubuntu
+sudo dnf install fuse-libs # Fedora
+```
+
+## Next steps
+
+Now that you have Creative! installed, head over to the [quickstart guide](/quickstart) to learn how to analyze your first gameplay video.

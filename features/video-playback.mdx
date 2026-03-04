@@ -1,0 +1,113 @@
+---
+title: 'Video Playback'
+description: 'Control video playback with timeline navigation and dynamic speed controls'
+---
+
+Creative! provides a comprehensive video playback system with intuitive timeline controls for precise navigation during gameplay analysis.
+
+## Timeline Navigation
+
+The video timeline allows you to navigate through your gameplay footage with precision. You can interact with the timeline in several ways:
+
+<Steps>
+  <Step title="Click to Jump">
+    Click anywhere on the timeline bar to instantly jump to that point in the video. The playback position updates immediately to match your click location.
+  </Step>
+  
+  <Step title="Drag the Handle">
+    Click and drag the timeline handle to scrub through the video. The video automatically pauses while you're dragging, allowing you to find the exact frame you need.
+  </Step>
+  
+  <Step title="Jump to Breakpoints">
+    Click on any breakpoint marker (shown as colored circles on the timeline) to instantly jump to that analysis point. This automatically selects the breakpoint and displays its associated annotations.
+  </Step>
+</Steps>
+
+<Note>
+  The timeline calculates positions as percentages of the total video duration, supporting videos of any length without performance degradation.
+</Note>
+
+## Playback Controls
+
+Creative! offers professional-grade playback controls for analyzing gameplay at different speeds and directions:
+
+### Standard Controls
+
+The control bar provides five essential buttons:
+
+- **Skip to Start**: Instantly jump to the beginning of the video
+- **Rewind**: Play the video in reverse
+- **Play/Pause**: Toggle between playing and pausing
+- **Fast Forward**: Play the video at increased speed
+- **Skip to End**: Instantly jump to the end of the video
+
+### Variable Speed Playback
+
+Both rewind and fast forward support multiple speed levels:
+
+<AccordionGroup>
+  <Accordion title="Fast Forward Modes">
+    Click the fast forward button multiple times to cycle through speed levels:
+    - First click: Plays forward at increased speed
+    - Subsequent clicks: Further increases playback speed
+    - Click while already fast-forwarding: Cycles to next speed level ("loop" mode)
+  </Accordion>
+  
+  <Accordion title="Rewind Modes">
+    Click the rewind button multiple times to cycle through speed levels:
+    - First click: Plays in reverse at increased speed
+    - Subsequent clicks: Further increases reverse playback speed
+    - Click while already rewinding: Cycles to next speed level ("loop" mode)
+  </Accordion>
+</AccordionGroup>
+
+<Info>
+  When you activate playback controls (play, rewind, or fast forward), any selected breakpoint is automatically deselected to prevent conflicts between manual and breakpoint-based navigation.
+</Info>
+
+## Trim Mode
+
+When you enter trim mode, the playback controls transform to show trim-specific options:
+
+<Steps>
+  <Step title="Enter Trim Mode">
+    Activate the trim tool from the toolbar. The standard playback controls are replaced with trim handles on the timeline.
+  </Step>
+  
+  <Step title="Set Trim Points">
+    Drag the start and end handles on the timeline to select the portion of video you want to keep. The handles show as percentages of the total video duration.
+  </Step>
+  
+  <Step title="Confirm or Cancel">
+    Two buttons replace the playback controls:
+    - **Cancel**: Exits trim mode without making changes
+    - **Confirm**: Applies the trim and removes any breakpoints outside the selected range
+  </Step>
+</Steps>
+
+<Note>
+  When you confirm a trim operation, Creative! automatically cleans up any breakpoints that fall outside the new time range using `cleanupBreakpoints()`. This ensures your annotations remain synchronized with the trimmed video.
+</Note>
+
+## Timeline Visualization
+
+The timeline provides visual feedback to help you understand your position in the video:
+
+- **Progress Bar**: A colored bar fills from left to right showing playback progress
+- **Smooth Transitions**: Progress updates use configurable transition timing (default 0.1s) for smooth animation
+- **Instant Seeking**: When you manually seek, transitions are disabled (0s) for immediate response
+- **Breakpoint Markers**: Colored circles appear at breakpoint positions on the timeline
+
+<Tip>
+  The timeline uses CSS custom properties (`--video-progress` and `--transition-time`) for smooth, hardware-accelerated animations that won't slow down even with long videos.
+</Tip>
+
+## Disabled State
+
+The playback controls automatically disable in certain situations:
+
+- When no video is loaded (cursor shows "not-allowed")
+- When annotation tools are active (except trim mode)
+- During certain editing operations
+
+When disabled, a semi-transparent overlay appears over the controls to clearly indicate they're unavailable, and all control interactions are prevented.

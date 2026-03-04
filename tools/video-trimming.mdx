@@ -1,0 +1,382 @@
+---
+title: Video Trimming
+description: Trim videos using FFmpeg integration to export only the relevant portions of gameplay footage
+---
+
+The Video Trimming tool allows you to select a specific segment of your gameplay video for analysis and export. This is essential for creating focused highlight reels, removing unnecessary footage, or reducing file sizes for sharing.
+
+## How It Works
+
+Creative! integrates FFmpeg, a powerful open-source video processing tool, to handle video trimming operations. When you export an analysis with trim boundaries set, Creative!:
+
+1. Identifies the trim start and end points (in seconds)
+2. Calls FFmpeg via a Tauri sidecar binary
+3. Creates a trimmed video file in the temp directory
+4. Adjusts all breakpoint timestamps to match the new video timeline
+5. Packages the trimmed video in the exported analysis archive
+
+## Using Trim Mode
+
+<Steps>
+  <Step title="Enable Trim Mode">
+    Click the **Trim Mode** checkbox in the analysis sidebar. Trim handles appear on the video timeline.
+  </Step>
+  
+  <Step title="Set Start Point">
+    Drag the **left trim handle** to set where the trimmed video should begin. The green bar indicates the trimmed region.
+  </Step>
+  
+  <Step title="Set End Point">
+    Drag the **right trim handle** to set where the trimmed video should end.
+  </Step>
+  
+  <Step title="Export with Trim">
+    When you export your analysis, Creative! automatically trims the video to your selected range and adjusts all annotations accordingly.
+  </Step>
+</Steps>
+
+<Tip>
+You can scrub the video timeline while in Trim Mode to preview exactly where you want to set the trim boundaries.
+</Tip>
+
+## Trim Handle Controls
+
+### Interactive Dragging
+
+Trim handles use a percentage-based drag system (`handleTrim.ts:19-66`) that:
+
+1. **Prevents crossing**: Start handle can't pass end handle (and vice versa)
+2. **Minimum gap**: Enforces 1% minimum distance between handles
+3. **Boundary clamping**: Handles stay within 0-100% range
+4. **Global mouse tracking**: Drag continues even when cursor leaves the video area
+
+```typescript
+// Prevent start from crossing end
+percent = Math.min(percent, trimEndPercent - 1)
+
+// Prevent end from crossing start
+percent = Math.max(percent, trimStartPercent + 1)
+```
+
+### Visual Feedback
+
+When Trim Mode is active:
+- **Green overlay**: Indicates the portion of video that will be kept
+- **Darkened regions**: Show areas that will be trimmed away
+- **Drag handles**: Vertical bars at trim boundaries
+- **Timestamp display**: Shows exact start/end times
+
+## FFmpeg Integration
+
+Creative! uses FFmpeg as a sidecar binary, meaning it's bundled with the application but runs as a separate process.
+
+### Binary Distribution
+
+FFmpeg binaries are downloaded during `npm install` via `download_ffmpeg.cjs`:
+
+```javascript
+const BINARIES = {
+  "win32-x64": "creative-ffmpeg-x86_64-pc-windows-msvc.exe",
+  "linux-x64": "creative-ffmpeg-x86_64-unknown-linux-gnu",
+  "darwin-x64": "creative-ffmpeg-x86_64-apple-darwin",
+  "darwin-arm64": "creative-ffmpeg-aarch64-apple-darwin"
+}
+```
+
+Binaries are sourced from the `eugeneware/ffmpeg-static` repository (version b4.4).
+
+### Sidecar Configuration
+
+The FFmpeg binary is configured in `tauri.conf.json` as an external binary:
+
+```json
+{
+  "externalBin": ["binaries/creative-ffmpeg"]
+}
+```
+
+This allows Creative! to invoke FFmpeg with proper permissions and sandboxing.
+
+## Export Workflow with Trimming
+
+When you export an analysis file with trim boundaries set (`exportAnalysis.ts:36-73`):
+
+### 1. Trim Video
+
+```typescript
+const command = Command.sidecar("binaries/creative-ffmpeg", [
+  "-ss", videoStart.toString(),        // Seek to start time
+  "-i", videoPath,                     // Input file
+  "-t", trimDuration.toString(),      // Duration to capture
+  "-c:v", "libx264",                   // Video codec
+  "-preset", "ultrafast",              // Encoding speed
+  "-crf", "25",                        // Quality (0-51, lower = better)
+  "-c:a", "aac",                       // Audio codec
+  "-b:a", "128k",                      // Audio bitrate
+  "-y",                                // Overwrite output
+  finalVideoPath
+])
+```
+
+### 2. Adjust Breakpoint Timestamps
+
+All breakpoint timestamps are shifted to align with the trimmed video:
+
+```typescript
+clonedBreakpoints.forEach((bp) => {
+  bp.timeStamp = bp.timeStamp - videoStart
+})
+```
+
+For example:
+- Original video: 0-300 seconds
+- Trim range: 60-120 seconds
+- Breakpoint at 90s becomes 30s in the trimmed video
+
+### 3. Update Video Boundaries
+
+```typescript
+// Zero out start (video now starts at 0)
+finalVideoStart = null
+
+// Adjust end relative to new start
+finalVideoEnd = videoEnd - videoStart
+```
+
+### 4. Package Export
+
+The trimmed video replaces the original in the analysis archive, and all annotation positions remain accurate relative to the new timeline.
+
+<Note>
+The original video file is never modified. Trimming creates a new file in the temp directory that's only used for export.
+</Note>
+
+## FFmpeg Encoding Parameters
+
+### Video Encoding
+
+| Parameter | Value | Purpose |
+|-----------|-------|----------|
+| `-c:v` | `libx264` | H.264 video codec (widely compatible) |
+| `-preset` | `ultrafast` | Fastest encoding (prioritizes speed over compression) |
+| `-crf` | `25` | Constant Rate Factor (23 is default, 25 is slightly more compressed) |
+
+### Audio Encoding
+
+| Parameter | Value | Purpose |
+|-----------|-------|----------|
+| `-c:a` | `aac` | AAC audio codec (widely compatible) |
+| `-b:a` | `128k` | 128 kbps audio bitrate (good quality for gameplay) |
+
+### Why `-preset ultrafast`?
+
+The `ultrafast` preset prioritizes encoding speed over file size. This is ideal for Creative! because:
+
+- **Faster exports**: Trimming completes in seconds rather than minutes
+- **Real-time workflow**: Users aren't waiting for heavy re-encoding
+- **Acceptable file size**: CRF 25 balances speed with reasonable compression
+
+<Tip>
+If you need maximum compression for sharing, use a dedicated video editor to re-encode the exported file with slower presets like `medium` or `slow`.
+</Tip>
+
+## Trim Boundaries and Breakpoints
+
+### Breakpoint Preservation
+
+When trimming:
+- **Breakpoints within trim range**: Timestamps adjusted and preserved
+- **Breakpoints outside trim range**: Automatically removed (via `cleanupBreakpoints`)
+
+This ensures your analysis data matches the trimmed video perfectly.
+
+### Annotation Handling
+
+All annotations (drawings, text notes, voice notes) are tied to breakpoints:
+- Breakpoints within trim range keep all annotations
+- Breakpoints outside trim range are deleted with their annotations
+
+<Warning>
+Trimming is destructive for exported files. Breakpoints outside the trim range are permanently removed from the exported analysis. Your original session remains unchanged.
+</Warning>
+
+## Performance Considerations
+
+### Trim Duration
+
+FFmpeg trimming time depends on:
+- **Video length**: Longer trims take more time
+- **Video resolution**: 4K takes longer than 1080p
+- **System CPU**: Encoding is CPU-intensive
+- **Source codec**: Some codecs re-encode faster than others
+
+**Typical performance**:
+- 1 minute @ 1080p: ~3-10 seconds
+- 5 minutes @ 1080p: ~15-45 seconds
+- 10 minutes @ 4K: ~1-3 minutes
+
+### Disk Space
+
+Trimmed videos are stored in the temp directory:
+- **During export**: Temporary file created
+- **After export**: Cleaned up automatically
+- **Storage needed**: Approximately same as final trimmed video size
+
+Ensure you have sufficient disk space (at least 2x the expected trimmed video size) before exporting.
+
+## Best Practices
+
+### For Efficient Trimming
+
+- **Trim generously**: Add a few seconds of buffer at start and end
+- **Align to action**: Start trim just before key moments, not in the middle
+- **Check breakpoints**: Verify all important breakpoints are within the trim range
+- **Preview first**: Play through the trimmed section before exporting
+
+### For File Size Optimization
+
+- **Remove downtime**: Trim out menus, loading screens, and idle moments
+- **Keep it focused**: Export only the specific play you're analyzing
+- **Consider splitting**: Multiple short exports are easier to share than one long file
+
+<Tip>
+Use the timeline markers to visualize where your breakpoints are positioned relative to the trim boundaries.
+</Tip>
+
+## Troubleshooting
+
+### FFmpeg failed to trim video
+
+**Error**: `FFmpeg failed to trim video.`
+
+**Possible causes**:
+- Insufficient disk space
+- Video file is corrupted or unreadable
+- Trim boundaries are invalid (start > end)
+- FFmpeg binary is missing or has incorrect permissions
+
+**Solution**:
+1. Check available disk space (need 2x trimmed video size)
+2. Verify the original video plays correctly
+3. Check trim handles aren't overlapping
+4. Reinstall Creative! if FFmpeg binary is missing
+
+### Trimmed video has no audio
+
+**Causes**:
+- Original video has no audio track
+- Audio codec not supported by FFmpeg
+
+**Solution**:
+- Check that the original video has audio
+- Try re-encoding the source video with a standard codec
+
+### Export is slow
+
+**If trimming takes a very long time**:
+
+- **Large video files**: 4K or high bitrate sources take longer
+- **Slow CPU**: Encoding is CPU-bound
+- **Long trim duration**: Trimming 30 minutes will take time
+
+**Solutions**:
+- Close other CPU-intensive applications
+- Trim shorter segments
+- Consider pre-trimming the source video outside Creative!
+
+### Breakpoints disappear after export
+
+**If breakpoints are missing**:
+
+- They were outside the trim boundaries and were automatically removed
+- Check the trim range includes all desired breakpoints before exporting
+
+**Solution**: Adjust trim boundaries to include all relevant breakpoints.
+
+## Technical Details
+
+### Timestamp Calculation
+
+Trim boundaries are stored as percentages (0-100) and converted to timestamps:
+
+```typescript
+const videoDuration = videoElement.duration // Total duration in seconds
+const startTime = (trimStartPercent / 100) * videoDuration
+const endTime = (trimEndPercent / 100) * videoDuration
+const trimDuration = endTime - startTime
+```
+
+### FFmpeg Seeking Accuracy
+
+FFmpeg uses the `-ss` flag for seeking:
+- **Before `-i`**: Fast seek (less accurate, keyframe-based)
+- **After `-i`**: Slow seek (frame-accurate)
+
+Creative! uses fast seeking for performance. For frame-perfect trimming, use a dedicated video editor.
+
+### Error Handling
+
+The export process checks FFmpeg exit codes:
+
+```typescript
+if (output.code !== 0) {
+  console.error("FFmpeg Error:", output.stderr)
+  throw new Error("FFmpeg failed to trim video.")
+}
+```
+
+Non-zero exit codes trigger error messages with FFmpeg's stderr output for debugging.
+
+## Keyboard Shortcuts
+
+| Action | Shortcut |
+|--------|----------|
+| Toggle Trim Mode | `M` |
+| Jump to Trim Start | `[` |
+| Jump to Trim End | `]` |
+| Set Trim Start to Current Time | `I` |
+| Set Trim End to Current Time | `O` |
+
+<Note>
+Keyboard shortcuts require the video player to have focus.
+</Note>
+
+## Advanced: FFmpeg Command Breakdown
+
+For those interested in the FFmpeg internals:
+
+```bash
+ffmpeg \
+  -ss 60 \              # Seek to 60 seconds (trim start)
+  -i input.mp4 \        # Input file
+  -t 60 \               # Duration: 60 seconds (trim duration)
+  -c:v libx264 \        # Video codec: H.264
+  -preset ultrafast \   # Speed priority
+  -crf 25 \             # Quality: 25 (0=lossless, 51=worst)
+  -c:a aac \            # Audio codec: AAC
+  -b:a 128k \           # Audio bitrate: 128 kbps
+  -y \                  # Overwrite output without asking
+  output.mp4            # Output file
+```
+
+This creates a 60-second video segment starting at the 60-second mark of the input.
+
+<Tip>
+You can see the actual FFmpeg command and output in the developer console (View > Toggle Developer Tools) during export.
+</Tip>
+
+## Comparison with Video Editors
+
+| Feature | Creative! Trimming | Dedicated Editor |
+|---------|-------------------|------------------|
+| **Speed** | Very fast (ultrafast preset) | Slower (better compression) |
+| **Accuracy** | Keyframe-based (fast seek) | Frame-perfect |
+| **Quality** | High (CRF 25) | Configurable |
+| **Integration** | Seamless with annotations | Manual export/import |
+| **Learning curve** | None (automatic) | Requires knowledge |
+
+Use Creative! trimming for quick exports with analysis data. Use a dedicated editor for final production work.
+
+<Note>
+The FFmpeg integration is designed for convenience, not professional video editing. For advanced needs (transitions, effects, multi-track editing), export the trimmed video and use a dedicated editor.
+</Note>

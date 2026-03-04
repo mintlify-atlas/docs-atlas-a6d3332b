@@ -1,0 +1,244 @@
+---
+title: Technical Architecture Overview
+description: High-level architecture and tech stack for Creative! gameplay analysis desktop app
+---
+
+## Overview
+
+Creative! is a cross-platform desktop application for gameplay analysis built with **Vue 3** (frontend) and **Rust/Tauri** (backend). The architecture enables efficient video playback, frame-accurate analysis, audio recording, and packaging/exporting of analysis files.
+
+## Tech Stack
+
+<CardGroup cols={2}>
+  <Card title="Frontend" icon="vuejs" color="#42b883">
+    - Vue 3.5+ with Composition API
+    - TypeScript
+    - Vite for build tooling
+  </Card>
+  <Card title="Backend" icon="rust" color="#ce422b">
+    - Rust with Tauri 2.x
+    - Custom plugins (audio recorder)
+    - Native video server (non-Windows)
+  </Card>
+</CardGroup>
+
+### Key Dependencies
+
+**Frontend:**
+```json
+"dependencies": {
+  "@tauri-apps/api": "^2.10.1",
+  "@tauri-apps/plugin-dialog": "^2.4.1",
+  "@tauri-apps/plugin-fs": "^2.4.5",
+  "tauri-plugin-audio-recorder-api": "^0.1.0",
+  "vue": "^3.5.13"
+}
+```
+
+**Backend (Cargo.toml):**
+```toml
+[dependencies]
+tauri = { version = "2", features = ["protocol-asset"] }
+tauri-plugin-audio-recorder = { path = "./tauri-plugin-audio-recorder" }
+zip = "8.1.0"
+tiny_http = "0.12.0"
+```
+
+## Architecture Diagram
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      Vue 3 Frontend                         │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐     │
+│  │   App.vue    │  │  Components  │  │   Utilities  │     │
+│  │ (Root State) │  │   (Video,    │  │   (Helpers)  │     │
+│  │              │  │   Analysis)  │  │              │     │
+│  └──────┬───────┘  └──────┬───────┘  └──────────────┘     │
+│         │                 │                                 │
+│  ┌──────▼─────────────────▼──────────┐                     │
+│  │   State Management (Composables)  │                     │
+│  │  - useVideo (playback control)    │                     │
+│  │  - useBreakpoint (analysis data)  │                     │
+│  │  - useFileUpload (I/O operations) │                     │
+│  └───────────────┬───────────────────┘                     │
+└──────────────────┼─────────────────────────────────────────┘
+                   │ @tauri-apps/api
+                   │ invoke(), convertFileSrc()
+┌──────────────────▼─────────────────────────────────────────┐
+│                    Tauri Rust Backend                       │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐     │
+│  │   Commands   │  │    Plugins   │  │ Video Server │     │
+│  │ - pack_*     │  │ - audio      │  │ (non-Windows)│     │
+│  │ - unpack_*   │  │ - fs/dialog  │  │ tiny_http    │     │
+│  │ - get_port   │  │              │  │              │     │
+│  └──────────────┘  └──────────────┘  └──────────────┘     │
+└─────────────────────────────────────────────────────────────┘
+                   │
+                   ▼
+            ┌──────────────┐
+            │ File System  │
+            │ - Videos     │
+            │ - .an files  │
+            │ - Audio WAV  │
+            └──────────────┘
+```
+
+## Data Flow
+
+### 1. Video Loading
+
+<Steps>
+  <Step title="User selects file">
+    Frontend calls `selectVideo()` from `useFileUpload.ts`
+  </Step>
+  <Step title="File type detection">
+    - `.mp4`/`.webm`/`.mov`: Direct video playback
+    - `.an`/`.anal`: Analysis archive requiring unpacking
+  </Step>
+  <Step title="URL construction">
+    - **Windows**: `convertFileSrc()` → `http://asset.localhost/...`
+    - **macOS/Linux**: HTTP server → `http://127.0.0.1:<port>/?path=...`
+  </Step>
+  <Step title="State updates">
+    `videoUrl` ref updates, triggering video element `@loadedmetadata`
+  </Step>
+</Steps>
+
+### 2. Analysis File (.an) Format
+
+<Info>
+Analysis files are ZIP archives containing:
+- `data.json` - Breakpoint metadata, timestamps, annotations
+- `video.{mp4|webm|mov}` - Original video file
+- `audio/*.wav` - Voice recordings per breakpoint
+</Info>
+
+**Packing (Export):**
+```typescript
+// Frontend → Tauri command
+await invoke('pack_analysis_file', {
+  savePath: '/path/to/output.an',
+  videoPath: '/path/to/video.mp4',
+  dataJson: JSON.stringify(analysisData),
+  audioPaths: { 'recording-123.wav': '/tmp/rec.wav' }
+})
+```
+
+**Unpacking (Import):**
+```typescript
+const dataJson = await invoke<string>('unpack_analysis_file', {
+  archivePath: '/path/to/file.an',
+  targetDir: '/tmp/extracted'
+})
+const analysisData = JSON.parse(dataJson)
+```
+
+### 3. State Management Pattern
+
+<Tabs>
+  <Tab title="Provide/Inject">
+    State is provided at the root (`App.vue`) and injected in child components:
+    
+    ```typescript
+    // App.vue (Provider)
+    const mode = ref<"replay" | "analysis">("replay")
+    const editing: SelectedTool = ref(null)
+    const playbackControls = useVideo(videoElement)
+    const breakpointStore = useBreakpoint()
+    
+    provide("mode", { mode, toggleMode })
+    provide("video", { videoElement, playbackControls })
+    provide("breakpointStore", breakpointStore)
+    provide("editing", editing)
+    ```
+  </Tab>
+  <Tab title="Reactive Refs">
+    Shared state via exported refs from composables:
+    
+    ```typescript
+    // useFileUpload.ts
+    export const videoUrl = ref<string | null>(null)
+    export const analysisData = ref<AnalysisExportData | null>(null)
+    export const pendingProcess = ref<string | null>(null)
+    
+    // Any component can import and use
+    import { videoUrl } from '@/store/hooks/useFileUpload'
+    ```
+  </Tab>
+</Tabs>
+
+## Key Components
+
+<CardGroup cols={3}>
+  <Card title="Video Playback" icon="play">
+    `useVideo()` composable handles:
+    - Frame-accurate seeking
+    - Variable speed FF/rewind
+    - Trim boundaries
+    - Progress tracking
+  </Card>
+  <Card title="Breakpoints" icon="bookmark">
+    `useBreakpoint()` manages:
+    - Timestamp markers
+    - Text/voice/drawing content
+    - Active breakpoint state
+    - Import/export serialization
+  </Card>
+  <Card title="File I/O" icon="folder-open">
+    `useFileUpload()` handles:
+    - Video file selection
+    - .an archive packing/unpacking
+    - Audio blob reconstruction
+    - Platform-specific URLs
+  </Card>
+</CardGroup>
+
+## Platform-Specific Considerations
+
+### Windows
+- **Video URLs**: Uses Tauri's `asset://localhost` protocol converted to `http://asset.localhost`
+- **No HTTP server**: Direct file access via WebView2 asset protocol
+- **CORS**: Bypassed via `http://` conversion in `buildAssetUrl()`
+
+### macOS/Linux
+- **HTTP Server**: `tiny_http` serves video files on ephemeral port (see `src-tauri/src/lib.rs:26-179`)
+- **Range Requests**: Full support for seeking/streaming (206 Partial Content)
+- **Auto-start**: Server launches in `run()` before Tauri window opens
+
+### Audio Recording (macOS)
+<Note>
+  To prevent exclusive microphone locking that mutes other apps (e.g., Discord), the audio plugin inherits the hardware's active sample rate instead of forcing a custom preset.
+  
+  See: `src-tauri/tauri-plugin-audio-recorder/src/desktop.rs:156-171`
+</Note>
+
+## Build & Development
+
+<CodeGroup>
+```bash Development
+yarn dev  # Starts Vite dev server + Tauri dev window
+```
+
+```bash Production Build
+yarn build  # TypeScript check + Vite build
+yarn tauri build  # Creates platform-specific installers
+```
+
+```bash Dependencies
+node download_ffmpeg.cjs  # Post-install hook for FFmpeg binary
+```
+</CodeGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Frontend Architecture" icon="code" href="/dev/frontend">
+    Deep dive into Vue 3 components and state management
+  </Card>
+  <Card title="Backend Architecture" icon="server" href="/dev/backend">
+    Tauri commands, video server, and plugin system
+  </Card>
+  <Card title="Audio Plugin" icon="microphone" href="/dev/audio-plugin">
+    Custom audio recorder implementation with cpal + hound
+  </Card>
+</CardGroup>
