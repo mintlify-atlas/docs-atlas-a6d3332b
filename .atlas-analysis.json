@@ -1,0 +1,94 @@
+{
+  "projectType": "saas",
+  "projectName": "Creative!",
+  "projectDescription": "A cross-platform desktop app for gameplay analysis with video breakpoints, annotations, and export capabilities.",
+  "theme": "palm",
+  "primaryColor": "#10B981",
+  "lightColor": "#34D399",
+  "darkColor": "#059669",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Core Features",
+            "pages": [
+              "features/video-playback",
+              "features/breakpoints",
+              "features/annotations",
+              "features/analysis-files"
+            ]
+          },
+          {
+            "group": "Annotation Tools",
+            "pages": [
+              "tools/drawing",
+              "tools/text-notes",
+              "tools/voice-notes",
+              "tools/video-trimming"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/creating-analysis",
+              "guides/exporting-sharing",
+              "guides/keyboard-shortcuts",
+              "guides/troubleshooting"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Development",
+        "groups": [
+          {
+            "group": "Architecture",
+            "pages": [
+              "dev/overview",
+              "dev/frontend",
+              "dev/backend",
+              "dev/audio-plugin"
+            ]
+          },
+          {
+            "group": "Setup",
+            "pages": [
+              "dev/setup",
+              "dev/building",
+              "dev/contributing"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Video playback with timeline controls",
+    "Breakpoint system for analysis points",
+    "Drawing annotations on video frames",
+    "Text and voice note attachments",
+    "Video trimming and editing",
+    "Analysis file export/import (.an format)",
+    "Cross-platform support (Windows, macOS, Linux)",
+    "Custom audio recording plugin"
+  ],
+  "publicApiSurface": [
+    "exportAnalysisFile() - Export analysis to .an file",
+    "pack_analysis_file() - Rust command to pack analysis",
+    "unpack_analysis_file() - Rust command to unpack analysis",
+    "get_video_server_port() - Get video streaming server port",
+    "Audio recorder plugin commands",
+    "Breakpoint management hooks",
+    "Video playback controls API"
+  ]
+}
